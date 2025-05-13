@@ -1,1 +1,4 @@
-was geht jungs wie läift leben
+m = 10;
+if m<11:
+    print("hallo")
+    
