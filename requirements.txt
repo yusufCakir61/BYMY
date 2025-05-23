@@ -1,0 +1,2 @@
+rich       # Für schöne Ausgaben im Terminal (z. B. Farben)
+tomli       # TOML-Konfiguration (bei Python < 3.11, sonst tomllib nutzen)
