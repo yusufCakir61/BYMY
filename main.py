@@ -1,66 +1,66 @@
 import threading
 import sys
 from config import lade_konfiguration
-from udpchat import starte_udp_socket, sende, empfange
+from tcpchat import starte_tcp_server, tcp_client_sende
 
-# Funktion für eingehende Nachrichten
-def empfangsschleife(sock):
-    while True:
-        try:
-            empfange(sock)
-        except Exception as e:
-            print("❌ Fehler beim Empfangen:", e)
-            break
+def zeige_server_banner(port):
+    print(f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 📡 TCP-Chat | Server-Modus    
+ 📍 Lausche auf Port {port}
+ Tippe 'exit' zum Beenden
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
+
+def zeige_client_banner(zielport):
+    print(f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 💬 TCP-Chat | Client-Modus    
+ ✉️  Sende Nachrichten an 127.0.0.1:{zielport}
+ Tippe 'exit' zum Beenden
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
 
 def main():
     konfig = lade_konfiguration()
     if not konfig:
-        print("Fehler beim Laden der Konfiguration.")
         return
 
-    # Port aus Argument lesen
     if len(sys.argv) < 2:
-        print("❌ Bitte gib den Port an: z. B. python3 main.py 5000")
+        print("❌ Bitte gib deine Rolle an: 'server' oder 'client'")
         return
 
-    try:
-        port = int(sys.argv[1])
-    except:
-        print("❌ Ungültiger Port. Beispiel: python3 main.py 5000")
-        return
+    rolle = sys.argv[1].lower()
+    server_port = konfig["port"][0]
+    client_port = konfig["port"][1]
 
-    print(f"\n📢 Willkommen bei UnserChat auf Port {port}!")
-    print("Verfügbare Befehle: help, say <zielport>:<Text>, exit\n")
+    if rolle == "server":
+        zeige_server_banner(server_port)
 
-    sock = starte_udp_socket(port)
+        def on_receive(msg):
+            # Hier könnte man z. B. automatische Antworten implementieren
+            pass
 
-    # Empfangs-Thread starten
-    empfang_thread = threading.Thread(target=empfangsschleife, args=(sock,), daemon=True)
-    empfang_thread.start()
+        starte_tcp_server(server_port, on_receive)
 
-    # Eingabeschleife
-    while True:
-        eingabe = input(">> ").strip()
+        while True:
+            eingabe = input("").strip()
+            if eingabe == "exit":
+                print("🚪 Server beendet.")
+                break
 
-        if eingabe == "exit":
-            print("👋 Tschüss!")
-            break
+    elif rolle == "client":
+        zeige_client_banner(server_port)
 
-        elif eingabe == "help":
-            print("🆘 Befehle:")
-            print("  exit                     - beendet das Programm")
-            print("  help                     - zeigt diese Hilfe")
-            print("  say <port>:<Text>        - sendet Nachricht an Port")
+        while True:
+            eingabe = input("💬 Du >> ").strip()
+            if eingabe == "exit":
+                print("🚪 Client beendet.")
+                break
+            tcp_client_sende("127.0.0.1", server_port, eingabe)
 
-        elif eingabe.startswith("say "):
-            try:
-                ziel, nachricht = eingabe[4:].split(":", 1)
-                zielport = int(ziel)
-                sende(sock, nachricht, "127.0.0.1", zielport)
-            except:
-                print("❌ Nutzung: say <port>:<nachricht>")
-        else:
-            print("❌ Unbekannter Befehl. Tippe 'help'.")
+    else:
+        print("❌ Ungültige Rolle. Nutze 'server' oder 'client'")
 
 if __name__ == "__main__":
     main()

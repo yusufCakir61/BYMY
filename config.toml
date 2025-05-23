@@ -1,6 +1,2 @@
-handle = "UnserChat"
-port = [5000, 5001, 5002]
-whoisport = 4000
-autoreply = "Ich bin gerade nicht da."
-imagepath = "./images"
-
+handle = "Bilal"
+port = [5001, 5002]  # Erster Port ist Server, zweiter ist Client

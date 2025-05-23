@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['sag_5fhallo_0',['sag_hallo',['../classtestmodul_1_1_beispiel_klasse.html#a21cdd4326363b520647affd843ab1f46',1,'testmodul::BeispielKlasse']]]
+  ['lade_5fkonfiguration_0',['lade_konfiguration',['../namespaceconfig.html#ad043e20fa90ac2d8407e2730a3919ebd',1,'config']]]
 ];

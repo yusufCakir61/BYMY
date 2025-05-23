@@ -1,10 +1,9 @@
-import tomli  # Für Python < 3.11 – bei 3.11 bitte tomllib verwenden
+import tomli
 
 def lade_konfiguration(pfad="config.toml"):
     try:
         with open(pfad, "rb") as f:
-            konfig = tomli.load(f)
-        return konfig
+            return tomli.load(f)
     except Exception as e:
         print("Fehler beim Laden der Konfiguration:", e)
         return None

@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['_5f_5finit_5f_5f_0',['__init__',['../classtestmodul_1_1_beispiel_klasse.html#a6f34a7bd3646b5eb6b3f8f53ed17da53',1,'testmodul::BeispielKlasse']]]
+  ['empfange_0',['empfange',['../namespaceudpchat.html#af911e08d31cf06398e6442bb54bfa998',1,'udpchat']]],
+  ['empfangsschleife_1',['empfangsschleife',['../namespacemain.html#a86850f4c88155fb7b4c9348af4ea02f6',1,'main']]]
 ];

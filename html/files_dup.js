@@ -1,4 +1,6 @@
 var files_dup =
 [
-    [ "testmodul.py", "testmodul_8py.html", "testmodul_8py" ]
+    [ "config.py", "config_8py.html", "config_8py" ],
+    [ "main.py", "main_8py.html", "main_8py" ],
+    [ "udpchat.py", "udpchat_8py.html", "udpchat_8py" ]
 ];

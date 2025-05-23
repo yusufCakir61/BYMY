@@ -1,27 +1,24 @@
 var indexSectionsWithContent =
 {
-  0: "_bnst",
-  1: "b",
-  2: "t",
-  3: "_s",
-  4: "n"
+  0: "celmsu",
+  1: "cmu",
+  2: "cmu",
+  3: "elms"
 };
 
 var indexSectionNames =
 {
   0: "all",
-  1: "classes",
+  1: "namespaces",
   2: "files",
-  3: "functions",
-  4: "variables"
+  3: "functions"
 };
 
 var indexSectionLabels =
 {
   0: "All",
-  1: "Classes",
+  1: "Namespaces",
   2: "Files",
-  3: "Functions",
-  4: "Variables"
+  3: "Functions"
 };
 
