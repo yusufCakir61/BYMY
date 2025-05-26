@@ -8,7 +8,7 @@ def run_cli(config, known_users):
     while True:
         print("\n--- BYMY Chat ---") 
         print("1) Nachricht senden")  
-        print("2) Bild senvenv   den (noch nicht verfügbar)") 
+        print("2) Bild senden (noch nicht verfügbar)") 
         print("3) Teilnehmer anzeigen (WHO)") 
         print("4) Beenden")   
         choice = input("Auswahl: ")    
