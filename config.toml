@@ -1,2 +1,0 @@
-handle = "Bilal, Yunus, Mustafa, Yusuf"
-port = [5001, 5002, 5003, 5004]  # Erster Port ist Server, zweiter ist Client
