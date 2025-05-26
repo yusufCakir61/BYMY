@@ -1,66 +1,33 @@
-import threading
-import sys
-from config import lade_konfiguration
-from tcpchat import starte_tcp_server, tcp_client_sende
+## @file network_process.py
+## @brief Behandelt Netzwerkkommunikation (JOIN, WHO, MSG) im Chat
 
-def zeige_server_banner(port):
-    print(f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- 📡 TCP-Chat | Server-Modus    
- 📍 Lausche auf Port {port}
- Tippe 'exit' zum Beenden
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""")
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-def zeige_client_banner(zielport):
-    print(f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- 💬 TCP-Chat | Client-Modus    
- ✉️  Sende Nachrichten an 127.0.0.1:{zielport}
- Tippe 'exit' zum Beenden
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""")
-
-def main():
-    konfig = lade_konfiguration()
-    if not konfig:
-        return
-
-    if len(sys.argv) < 2:
-        print("❌ Bitte gib deine Rolle an: 'server' oder 'client'")
-        return
-
-    rolle = sys.argv[1].lower()
-    server_port = konfig["port"][0]
-    client_port = konfig["port"][1]
-
-    if rolle == "server":
-        zeige_server_banner(server_port)
-
-        def on_receive(msg):
-            # Hier könnte man z. B. automatische Antworten implementieren
-            pass
-
-        starte_tcp_server(server_port, on_receive)
-
-        while True:
-            eingabe = input("").strip()
-            if eingabe == "exit":
-                print("🚪 Server beendet.")
-                break
-
-    elif rolle == "client":
-        zeige_client_banner(server_port)
-
-        while True:
-            eingabe = input("💬 Du >> ").strip()
-            if eingabe == "exit":
-                print("🚪 Client beendet.")
-                break
-            tcp_client_sende("127.0.0.1", server_port, eingabe)
-
-    else:
-        print("❌ Ungültige Rolle. Nutze 'server' oder 'client'")
+import multiprocessing
+from config.config_handler import load_config
+from discovery.discovery_process import run_discovery_process
+from network.network_process import run_network_process
+from cli.cli_process import run_cli
 
 if __name__ == "__main__":
-    main()
+    manager = multiprocessing.Manager()
+    known_users = manager.dict()
+
+    config = load_config()
+
+    p1 = multiprocessing.Process(target=run_discovery_process, args=(config["whoisport"],))
+    p2 = multiprocessing.Process(target=run_network_process, args=(known_users,))
+
+    p1.start()
+    p2.start()
+
+    try:
+        run_cli(config, known_users)
+    except KeyboardInterrupt:
+        print("🛑 Beende Chat.")
+
+    p1.terminate()
+    p2.terminate()
+    p1.join()
+    p2.join()
