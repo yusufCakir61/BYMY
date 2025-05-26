@@ -19,7 +19,8 @@ def run_cli(config, known_users):
             if handle not in known_users:
                 print(f" Nutzer '{handle}' nicht bekannt. Bitte zuerst WHO ausführen.")
                 continue
-            send_msg(handle, message, known_users)
+            send_msg(handle, message, known_users, config["handle"])
+
 
         elif choice == "2":
             print(" Bildversand wird noch entwickelt.")

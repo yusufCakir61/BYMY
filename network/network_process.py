@@ -14,15 +14,19 @@ def send_join(handle, port, whoisport):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(msg.encode("utf-8"), ("255.255.255.255", whoisport))
 
-def send_msg(to_handle, text, known_users):
+def send_msg(to_handle, text, known_users, my_handle):
     if to_handle not in known_users:
         print(f"⚠️ Nutzer '{to_handle}' nicht gefunden.")
         return
+
     ip, port = known_users[to_handle]
-    msg = f"MSG {to_handle} {text}\n"
+    msg = f"MSG {my_handle} {text}\n"  # richtiger Absender statt Empfänger
+    print(f"➡️ MSG an {ip}:{port} → {msg.strip()}")
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(msg.encode("utf-8"), (ip, port))
     print("✅ Nachricht gesendet.")
+
 
 def listen_on_port(port, known_users):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
