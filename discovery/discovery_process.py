@@ -33,4 +33,4 @@ def run_discovery_process(whoisport):
             response = "KNOWNUSERS " + ", ".join([f"{h} {ip} {p}" for h, ip, p in known_users]) + "\n"
             sock.sendto(response.encode("utf-8"), (sender_ip, target_port))
             print(f"➡️ KNOWNUSERS gesendet an {sender_ip}:{target_port}")
-
+            
