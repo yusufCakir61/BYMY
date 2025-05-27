@@ -21,7 +21,7 @@ def send_msg(to_handle, text, known_users, my_handle):
 
     ip, port = known_users[to_handle]
     msg = f"MSG {my_handle} {text}\n"  # richtiger Absender statt Empfänger
-    print(f"➡️ MSG an {ip}:{port} → {msg.strip()}")
+    print(f" MSG an {ip}:{port} → {msg.strip()}")
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(msg.encode("utf-8"), (ip, port))
@@ -31,7 +31,7 @@ def send_msg(to_handle, text, known_users, my_handle):
 def listen_on_port(port, known_users):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", port))
-    print(f"👂 Warte auf Nachrichten auf Port {port}")
+    print(f" Warte auf Nachrichten auf Port {port}")
     while True:
         data, addr = sock.recvfrom(1024)
         msg = data.decode("utf-8").strip()
