@@ -25,11 +25,11 @@ def run_cli(config, known_users):
                 print(f" Nutzer '{handle}' nicht bekannt. Bitte zuerst WHO ausführen.")
                 continue
 
-            folder = "send_omg"
+            folder = "send_img"
             images = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
 
             if not images:
-                print("⚠️ Kein Bild im Ordner 'send_omg/' gefunden.")
+                print("⚠️ Kein Bild im Ordner 'send_img/' gefunden.")
                 continue
 
             print("\n📂 Verfügbare Bilder:")
