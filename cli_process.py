@@ -57,7 +57,7 @@ def run_cli(config, known_users):
                 print(f"   • {h} @ {ip}:{port}")
 
         elif choice == "4":
-            print(" Beende Chat...")
+            print(" Beende Chat.....")
             break
         else:
-            print(" Ungültige Eingabe.")
+            print(" Ungültige Eingabe!")
