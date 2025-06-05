@@ -1,6 +1,31 @@
-handle = "Yunus"
-port = [6000]
-whoisport = 4000
-autoreply = "Ich bin gerade nicht da."
-imagepath = "receive/"
+# \file config.toml
+# \brief Konfigurationsdatei für den dezentralen BYMY-Chat-Client.
+#
+# Diese Datei wird beim Start eingelesen (über config_handler.py)
+# und enthält alle wichtigen benutzerspezifischen Einstellungen
+# für Netzwerkkommunikation und Verhalten des Programms.
 
+# \brief Der eigene Benutzername (Handle), mit dem man im Chat erscheint.
+handle = "Bilal"
+
+# \brief Liste mit einem Eintrag: Der Port, auf dem dieser Client Nachrichten empfängt.
+# 
+# Muss mit anderen Teilnehmern abgestimmt sein, wenn direkte Kommunikation erfolgen soll.
+port = [5000]
+
+# \brief UDP-Port, auf dem WHO- und JOIN-Broadcasts gesendet und empfangen werden.
+#
+# Alle Teilnehmer im Netzwerk müssen denselben whoisport verwenden,
+# damit Discovery-Nachrichten funktionieren.
+whoisport = 4000
+
+# \brief Automatische Antwortnachricht, wenn man gerade nicht aktiv ist.
+#
+# Diese Funktion kann z. B. für Abwesenheitsbenachrichtigungen verwendet werden.
+autoreply = "Ich bin gerade nicht da."
+
+# \brief Pfad zum Ordner, in dem empfangene Bilder gespeichert werden.
+#
+# Der Pfad kann relativ oder absolut sein. Der Ordner wird automatisch erstellt,
+# falls er noch nicht existiert.
+imagepath = "receive/"
