@@ -1,31 +1,26 @@
-# \file config.toml
-# \brief Konfigurationsdatei für den dezentralen BYMY-Chat-Client.
-#
-# Diese Datei wird beim Start eingelesen (über config_handler.py)
-# und enthält alle wichtigen benutzerspezifischen Einstellungen
-# für Netzwerkkommunikation und Verhalten des Programms.
+# ============================================================
+# Konfigurationsdatei für den BYMY Chat-Client
+# Diese Datei wird beim Start des Programms eingelesen
+# und steuert grundlegende Verhaltensweisen und Einstellungen.
+# ============================================================
 
-# \brief Der eigene Benutzername (Handle), mit dem man im Chat erscheint.
+# Der Benutzername (Handle), mit dem du im Netzwerk sichtbar bist.
+# Muss eindeutig sein, wenn mehrere Teilnehmer gleichzeitig aktiv sind.
 handle = "Bilal"
 
-# \brief Liste mit einem Eintrag: Der Port, auf dem dieser Client Nachrichten empfängt.
-# 
-# Muss mit anderen Teilnehmern abgestimmt sein, wenn direkte Kommunikation erfolgen soll.
+# UDP-Port, auf dem dieser Client Nachrichten empfängt.
+# Trage hier einen freien Port ein (z. B. 5000, 5001, 5002 ...).
 port = [5000]
 
-# \brief UDP-Port, auf dem WHO- und JOIN-Broadcasts gesendet und empfangen werden.
-#
-# Alle Teilnehmer im Netzwerk müssen denselben whoisport verwenden,
-# damit Discovery-Nachrichten funktionieren.
+# UDP-Port für Discovery (WHO/ JOIN).
+# Alle Clients müssen denselben Wert nutzen, um sich gegenseitig zu finden.
 whoisport = 4000
 
-# \brief Automatische Antwortnachricht, wenn man gerade nicht aktiv ist.
-#
-# Diese Funktion kann z. B. für Abwesenheitsbenachrichtigungen verwendet werden.
+# Automatische Antwortnachricht, wenn du gerade nicht aktiv bist.
+# Diese wird (optional) als Rückmeldung gesendet.
 autoreply = "Ich bin gerade nicht da."
 
-# \brief Pfad zum Ordner, in dem empfangene Bilder gespeichert werden.
-#
-# Der Pfad kann relativ oder absolut sein. Der Ordner wird automatisch erstellt,
-# falls er noch nicht existiert.
+# Zielordner für empfangene Bilder.
+# Der Ordner wird automatisch erstellt, falls er nicht existiert.
+# Pfadangabe kann relativ (z. B. "receive/") oder absolut sein.
 imagepath = "receive/"

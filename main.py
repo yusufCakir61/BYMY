@@ -44,9 +44,6 @@ if __name__ == "__main__":
     # 👁‍🗨 Bildereignisse hinzufügen (für Netzwerkprozess)
     config["image_events"] = image_events
 
-    # ✅ Debug-Ausgabe zur Kontrolle
-    print("🔍 Konfiguration geladen:", dict(config))
-
     # 🛰️ Discovery-Prozess starten (verarbeitet WHO & JOIN)
     p1 = multiprocessing.Process(
         target=run_discovery_process,
