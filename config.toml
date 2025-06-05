@@ -1,5 +1,5 @@
 handle = "Yunus"
-port = [5000]
+port = [6000]
 whoisport = 4000
 autoreply = "Ich bin gerade nicht da."
 imagepath = "receive/"
