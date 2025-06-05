@@ -6,7 +6,7 @@
 # für Netzwerkkommunikation und Verhalten des Programms.
 
 # \brief Der eigene Benutzername (Handle), mit dem man im Chat erscheint.
-handle = "Yunus"
+handle = "Bilal"
 
 # \brief Liste mit einem Eintrag: Der Port, auf dem dieser Client Nachrichten empfängt.
 # 

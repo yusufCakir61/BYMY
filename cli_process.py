@@ -47,12 +47,12 @@ def run_cli(config, known_users):
                 continue
 
             # Verzeichnis mit sendbaren Bildern
-            folder = "send_omg"
+            folder = "send_img"
             # Filtere alle Bilddateien mit gängigen Endungen
             images = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
 
             if not images:
-                print("⚠️ Kein Bild im Ordner 'send_omg/' gefunden.")
+                print("⚠️ Kein Bild im Ordner 'send_img/' gefunden.")
                 continue
 
             # Liste der verfügbaren Bilder anzeigen
