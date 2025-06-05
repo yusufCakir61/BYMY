@@ -17,7 +17,7 @@ def send_join(handle, port, whoisport):
 
 def send_msg(to_handle, text, known_users, my_handle):
     if to_handle not in known_users:
-        print(f"⚠️ Nutzer '{to_handle}' nicht gefunden, warte bis Nutzer Online ist!")
+        print(f"⚠️ Nutzer '{to_handle}' nicht gefunden.")
         return
     ip, port = known_users[to_handle]
     msg = f"MSG {my_handle} {text}\n"
@@ -43,7 +43,7 @@ def send_image(to_handle, filepath, data, known_users, my_handle):
             chunk_msg = f"CHUNK {i}".encode("utf-8") + b"||" + chunk_data
             sock.sendto(chunk_msg, (ip, port))
         sock.sendto(b"IMG_END", (ip, port))
-    print("✅ Bild gesendet ;)!.")
+    print("✅ Bild gesendet.")
 
 def listen_on_port(port, known_users, config):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -116,5 +116,4 @@ def run_network_process(known_users, config):
     try:
         threading.Event().wait()
     except KeyboardInterrupt:
-        print("🛑 Netzwerkdienst beendet. Bye")
-
+        print("🛑 Netzwerkdienst beendet.")

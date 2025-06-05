@@ -1,9 +1,0 @@
-<<<<<<< HEAD
-handle = "Yunus"
-=======
-handle = "yusuf"
->>>>>>> 1d8117d8bb0a8de9404d44e7bbc44f116b25c6ed
-port = [6000]
-whoisport = 4000
-autoreply = "Ich bin gerade nicht da."
-imagepath = "receive/"
