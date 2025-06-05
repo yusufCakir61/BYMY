@@ -33,34 +33,34 @@ if __name__ == "__main__":
     known_users = manager.dict()     # Dictionary: Handle → (IP, Port)
     image_events = manager.list()    # Liste für empfangene Bilder (für GUI/CLI)
 
-    # 🔄 Lokale Konfiguration laden (aus TOML-Datei)
+    # Lokale Konfiguration laden (aus TOML-Datei)
     config_data = load_config()  # normales Dictionary
 
-    # 🧠 Konfiguration in multiprocessing-kompatibles Dictionary überführen
+    # Konfiguration in multiprocessing-kompatibles Dictionary überführen
     config = manager.dict()
     for key, value in config_data.items():
         config[key] = value
 
-    # 👁‍🗨 Bildereignisse hinzufügen (für Netzwerkprozess)
+    # Bildereignisse hinzufügen (für Netzwerkprozess)
     config["image_events"] = image_events
 
-    # 🛰️ Discovery-Prozess starten (verarbeitet WHO & JOIN)
+    # Discovery-Prozess starten (verarbeitet WHO & JOIN)
     p1 = multiprocessing.Process(
         target=run_discovery_process,
         args=(config["whoisport"],)
     )
     p1.start()
 
-    # 🌐 Netzwerkprozess starten (Empfang von Nachrichten/Bildern)
+    # Netzwerkprozess starten (Empfang von Nachrichten/Bildern)
     p2 = multiprocessing.Process(
         target=run_network_process,
         args=(known_users, config)
     )
     p2.start()
 
-    # 👨‍💻 CLI starten (läuft im Hauptprozess)
+    # CLI starten (läuft im Hauptprozess)
     run_cli(config, known_users)
 
-    # 🧹 Aufräumen: Subprozesse nach CLI-Beenden beenden
+    # Aufräumen: Subprozesse nach CLI-Beenden beenden
     p1.terminate()
     p2.terminate()
