@@ -12,37 +12,18 @@ import math
 # - Netzwerkabfragen (WHO, JOIN)
 # über UDP-Kommunikation.
 
-## \brief Sendet eine WHO-Anfrage via UDP-Broadcast.
-## 
-## Diese Nachricht wird an alle Clients im lokalen Netzwerk gesendet,
-## um eine Liste aktiver Benutzer anzufordern.
-## \param whoisport Der UDP-Port, auf dem WHO-Anfragen empfangen werden.
 def send_who(whoisport):
     msg = "WHO\n"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(msg.encode("utf-8"), ("255.255.255.255", whoisport))
 
-## \brief Sendet eine JOIN-Nachricht via UDP-Broadcast.
-##
-## Der eigene Benutzername und Port werden bekanntgegeben, sodass andere Clients
-## einen neuen Teilnehmer erkennen und speichern können.
-## \param handle Eigenes Handle (Benutzername).
-## \param port Eigener Kommunikationsport.
-## \param whoisport UDP-Port für Discovery-Prozesse.
 def send_join(handle, port, whoisport):
     msg = f"JOIN {handle} {port}\n"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(msg.encode("utf-8"), ("255.255.255.255", whoisport))
 
-## \brief Sendet eine Textnachricht an einen bestimmten Benutzer.
-##
-## Die Nachricht wird direkt an die bekannte IP und den Port des Zielbenutzers gesendet.
-## \param to_handle Ziel-Handle (Empfänger).
-## \param text Der zu sendende Text.
-## \param known_users Dictionary der bekannten Nutzer mit IP & Port.
-## \param my_handle Eigenes Handle (Absender).
 def send_msg(to_handle, text, known_users, my_handle):
     if to_handle not in known_users:
         print(f"⚠️ Nutzer '{to_handle}' nicht gefunden.")
@@ -54,16 +35,6 @@ def send_msg(to_handle, text, known_users, my_handle):
         sock.sendto(msg.encode("utf-8"), (ip, port))
     print("✅ Nachricht gesendet.")
 
-## \brief Sendet ein Bild in mehreren Teilen per UDP an einen Benutzer.
-##
-## Das Bild wird als binäre Daten in maximal 4000-Byte-Chunks gesendet.
-## Vorab wird eine IMG_START-Nachricht und nach Abschluss eine IMG_END-Nachricht gesendet.
-##
-## \param to_handle Empfänger-Handle.
-## \param filepath Pfad zur Bilddatei (für den Namen).
-## \param data Der Binärinhalt des Bildes.
-## \param known_users Bekannte Nutzer mit IP & Port.
-## \param my_handle Eigenes Handle (Absender).
 def send_image(to_handle, filepath, data, known_users, my_handle):
     if to_handle not in known_users:
         print(f"⚠️ Nutzer '{to_handle}' nicht gefunden.")
@@ -83,21 +54,11 @@ def send_image(to_handle, filepath, data, known_users, my_handle):
         sock.sendto(b"IMG_END", (ip, port))
     print("✅ Bild gesendet.")
 
-## \brief Lauscht auf eingehende Nachrichten und verarbeitet sie.
-##
-## Diese Funktion wird in einem eigenen Thread gestartet und verarbeitet:
-## - Teilnehmerlisten (KNOWNUSERS)
-## - Textnachrichten (MSG)
-## - Bilddaten (IMG_START, CHUNK, IMG_END)
-##
-## \param port UDP-Port, auf dem gehört wird.
-## \param known_users Geteiltes Dictionary der bekannten Nutzer.
-## \param config Konfigurationsobjekt (z. B. Speicherpfad für empfangene Bilder).
 def listen_on_port(port, known_users, config):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", port))
     print(f"📡 Warte auf Nachrichten auf Port {port}")
-    incoming_images = {}  # Zwischenspeicher für Bildteile
+    incoming_images = {}
 
     while True:
         data, addr = sock.recvfrom(65535)
@@ -115,8 +76,19 @@ def listen_on_port(port, known_users, config):
         elif msg.startswith("MSG"):
             parts = msg.split(" ", 2)
             if len(parts) == 3:
-                _, handle, text = parts
-                print(f"\n📨 Neue Nachricht von {handle}: {text}")
+                _, sender_handle, text = parts
+
+                # Nachricht anzeigen – mit Hinweis, wenn abwesend
+                if config.get("away", False):
+                    print(f"\n📨 Neue Nachricht von {sender_handle} (empfangen im Abwesenheitsmodus): {text}")
+                else:
+                    print(f"\n📨 Neue Nachricht von {sender_handle}: {text}")
+
+                # Auto-Reply nur senden, wenn abwesend und Nachricht nicht von mir selbst
+                if config.get("autoreply") and config.get("away", False):
+                    if sender_handle != config.get("handle"):
+                        send_msg(sender_handle, config["autoreply"], known_users, config["handle"])
+                        print(f"🤖 Auto-Reply gesendet an {sender_handle}: {config['autoreply']}")
 
         elif msg.startswith("IMG_START"):
             parts = msg.split(" ", 3)
@@ -164,14 +136,6 @@ def listen_on_port(port, known_users, config):
                         })
                     del incoming_images[key]
 
-## \brief Startet den Netzwerkprozess mit JOIN und Empfangs-Thread.
-##
-## Diese Funktion:
-## - sendet zu Beginn eine JOIN-Nachricht
-## - startet einen Hintergrundthread für eingehende Nachrichten
-##
-## \param known_users Gemeinsames Nutzerverzeichnis (Handle → (IP, Port)).
-## \param config Konfigurationsdaten inkl. Ports, Handle etc.
 def run_network_process(known_users, config):
     handle = config["handle"]
     port = config["port"][0]
@@ -183,6 +147,6 @@ def run_network_process(known_users, config):
     t.start()
 
     try:
-        threading.Event().wait()  # Thread am Leben halten
+        threading.Event().wait()
     except KeyboardInterrupt:
         print("🛑 Netzwerkdienst beendet.")
