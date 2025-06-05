@@ -17,7 +17,7 @@ def send_join(handle, port, whoisport):
 
 def send_msg(to_handle, text, known_users, my_handle):
     if to_handle not in known_users:
-        print(f"⚠️ Nutzer '{to_handle}' nicht gefunden.")
+        print(f"⚠️ Nutzer '{to_handle}' nicht gefunden, warte bis Nutzer Online ist!")
         return
     ip, port = known_users[to_handle]
     msg = f"MSG {my_handle} {text}\n"
