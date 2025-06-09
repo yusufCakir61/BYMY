@@ -23,7 +23,9 @@ def run_discovery_process(whoisport):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.bind(("", whoisport))
 
-    print(f" Discovery läuft auf Port {whoisport}")
+    print("")
+    print("")
+    print(f"❗️ Discovery läuft auf Port {whoisport}")
 
     # Endlosschleife zur Verarbeitung eingehender Nachrichten
     while True:
@@ -41,7 +43,7 @@ def run_discovery_process(whoisport):
                 # Handle nur einmal registrieren
                 if not any(u for u in known_users if u[0] == handle):
                     known_users.append((handle, ip, port))
-                    print(f"➕ Neuer Teilnehmer: {handle} @ {ip}:{port}")
+                    print(f"+ Neuer Teilnehmer: {handle} @ {ip}:{port}")
 
         # WHO → Rückgabe aller bekannten Teilnehmer
         elif msg.startswith("WHO"):
@@ -55,3 +57,4 @@ def run_discovery_process(whoisport):
             response = "KNOWNUSERS " + ", ".join([f"{h} {ip} {p}" for h, ip, p in known_users]) + "\n"
             sock.sendto(response.encode("utf-8"), (sender_ip, target_port))
             print(f"➡️ KNOWNUSERS gesendet an {sender_ip}:{target_port}")
+            print("")
