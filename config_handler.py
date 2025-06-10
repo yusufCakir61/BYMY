@@ -17,7 +17,7 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.toml")
 ## dann ihren Inhalt als Dictionary.
 ##
 ## \return Dictionary mit Konfigurationseinträgen (z. B. 'handle', 'port', etc.).
-## \throws FileNotFoundError Wenn die Datei nicht existiert.
+## \throws FileNotFoundError Wenn die Datei nicht existiert
 def load_config():
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Konfigurationsdatei '{CONFIG_PATH}' nicht gefunden.")
