@@ -13,7 +13,7 @@ BOLD = "\033[1m"
 MAGENTA = "\033[95m"
 
 # \file network_process.py
-# \brief Netzwerkfunktionen für Chat-Kommunikation über UDP (Text & Bild).
+# \brief Netzwerkfunktionen für Chat Kommunikation über UDP (Text & Bild).
 
 def send_who(whoisport):
     msg = "WHO\n"

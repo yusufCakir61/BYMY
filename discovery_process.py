@@ -8,7 +8,7 @@ import socket
 
 ## \brief Startet den Discovery-Prozess für den Chat.
 ##
-## Diese Funktion hört auf einem bestimmten UDP-Port auf eingehende
+## Diese Funktion hört auf einem bestimmten UDP Port auf eingehende
 ## JOIN- und WHO-Nachrichten. Bei JOIN werden neue Teilnehmer
 ## gespeichert, bei WHO wird eine Liste aller bekannten Benutzer
 ## an den Anfragenden zurückgesendet.
