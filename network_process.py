@@ -3,29 +3,18 @@ import threading
 import os
 import math
 
-# ANSI-Farbcodes für strukturierte Terminalausgabe
-RESET = "\033[0m"    # Formatierung zurücksetzen
-GREEN = "\033[92m"   # Grüner Text
-YELLOW = "\033[93m"  # Gelber Text
-RED = "\033[91m"     # Roter Text
-CYAN = "\033[96m"    # Cyan Text
-BOLD = "\033[1m"     # Fettgedruckter Text
-MAGENTA = "\033[95m" # Magenta Text
+# ANSI-Farben für strukturierte Terminalausgabe
+RESET = "\033[0m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+RED = "\033[91m"
+CYAN = "\033[96m"
+BOLD = "\033[1m"
+MAGENTA = "\033[95m"
 
-## @file network_process.py
-# @brief Netzwerkfunktionen für den BYMY-Chat (UDP-basierte Text- und Bildübertragung).
-#
-# Dieses Modul behandelt alle Netzwerkoperationen:
-# - WHO/JOIN-Broadcasts für die Teilnehmererkennung
-# - Versand/Empfang von Textnachrichten
-# - Chunk-basierte Bildübertragung mit Zuverlässigkeitsmechanismen
-# - Auto-Reply-Funktionalität für Abwesenheitsmodus
+# \file network_process.py
+# \brief Netzwerkfunktionen für Chat Kommunikation über UDP (Text & Bild).
 
-## @brief Sendet eine WHO-Broadcast-Anfrage zur Teilnehmererkennung.
-# @param whoisport Der UDP-Port für Discovery-Broadcasts.
-# @details
-# Sendet eine "WHO"-Nachricht an das gesamte Netzwerk (255.255.255.255).
-# Andere Clients sollten mit KNOWNUSERS-Nachrichten antworten.
 def send_who(whoisport):
     msg = "WHO\n"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -33,12 +22,6 @@ def send_who(whoisport):
         sock.sendto(msg.encode("utf-8"), ("255.255.255.255", whoisport))
     print(f"{CYAN}🔎 WHO-Anfrage gesendet...{RESET}")
 
-## @brief Sendet einen JOIN-Broadcast zur Registrierung im Netzwerk.
-# @param handle Der eigene Benutzername.
-# @param port Der UDP-Port für Nachrichtenempfang.
-# @param whoisport Der Discovery-Port.
-# @details
-# Teilt anderen Clients mit: "Ich bin <handle> und höre auf Port <port>".
 def send_join(handle, port, whoisport):
     msg = f"JOIN {handle} {port}\n"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -46,12 +29,6 @@ def send_join(handle, port, whoisport):
         sock.sendto(msg.encode("utf-8"), ("255.255.255.255", whoisport))
     print(f"{GREEN}📡 JOIN gesendet als '{handle}' auf Port {port}.{RESET}")
 
-## @brief Sendet eine Textnachricht an einen bestimmten Benutzer.
-# @param to_handle Ziel-Benutzername.
-# @param text Der Nachrichteninhalt.
-# @param known_users Dictionary bekannter Nutzer (Handle → (IP, Port)).
-# @param my_handle Eigener Benutzername.
-# @throws KeyError Wenn der Zielnutzer unbekannt ist.
 def send_msg(to_handle, text, known_users, my_handle):
     if to_handle not in known_users:
         print(f"{RED}⚠️ Nutzer '{to_handle}' nicht gefunden.{RESET}")
@@ -63,17 +40,6 @@ def send_msg(to_handle, text, known_users, my_handle):
         sock.sendto(msg.encode("utf-8"), (ip, port))
     print(f"{GREEN}✅ Nachricht gesendet an {to_handle}.{RESET}")
 
-## @brief Sendet ein Bild in Chunks an einen Benutzer.
-# @param to_handle Ziel-Benutzername.
-# @param filepath Pfad zur Bilddatei.
-# @param data Die eingelesenen Bilddaten (Bytes).
-# @param known_users Dictionary bekannter Nutzer.
-# @param my_handle Eigener Benutzername.
-# @details
-# Das Bild wird in 4000-Byte-Blöcken mit Header/Footer-Markierungen übertragen:
-# 1. IMG_START mit Metadaten
-# 2. CHUNK-Datenpakete
-# 3. IMG_END als Abschluss.
 def send_image(to_handle, filepath, data, known_users, my_handle):
     if to_handle not in known_users:
         print(f"{RED}⚠️ Nutzer '{to_handle}' nicht gefunden.{RESET}")
@@ -93,16 +59,6 @@ def send_image(to_handle, filepath, data, known_users, my_handle):
         sock.sendto(b"IMG_END", (ip, port))
     print(f"{GREEN}✅ Bild erfolgreich übertragen.{RESET}")
 
-## @brief Haupt-Empfangsschleife für Nachrichten und Bilder.
-# @param port Der Port zum Lauschen auf eingehende Nachrichten.
-# @param known_users Dictionary bekannter Nutzer (wird bei KNOWNUSERS aktualisiert).
-# @param config Konfigurationsdictionary (u.a. "away"-Status).
-# @details
-# Verarbeitet:
-# - Bildübertragungen (IMG_START/CHUNK/IMG_END)
-# - KNOWNUSERS-Listenaktualisierungen
-# - Textnachrichten (MSG) mit Auto-Reply-Logik
-# - Offline-Nachrichtenspeicherung im Abwesenheitsmodus.
 def listen_on_port(port, known_users, config):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", port))
@@ -117,7 +73,6 @@ def listen_on_port(port, known_users, config):
             print(f"{RED}🛑 Netzwerk-Socket wurde geschlossen.{RESET}")
             break
 
-        # Bildübertragungs-Protokoll
         if data.startswith(b"IMG_START"):
             msg = data.decode("utf-8", errors="ignore").strip()
             parts = msg.split(" ", 3)
@@ -170,7 +125,6 @@ def listen_on_port(port, known_users, config):
 
         msg = data.decode("utf-8", errors="ignore").strip()
 
-        # Teilnehmerliste aktualisieren
         if msg.startswith("KNOWNUSERS"):
             users = msg[len("KNOWNUSERS "):].split(", ")
             for user in users:
@@ -180,7 +134,6 @@ def listen_on_port(port, known_users, config):
                     known_users[handle] = (ip, int(port_str))
             print(f"{MAGENTA}👥 Teilnehmerliste aktualisiert.{RESET}")
 
-        # Textnachricht verarbeiten
         elif msg.startswith("MSG"):
             parts = msg.split(" ", 2)
             if len(parts) == 3:
@@ -203,7 +156,6 @@ def listen_on_port(port, known_users, config):
                     send_msg(sender_handle, config["autoreply"], known_users, own_handle)
                     print(f"{CYAN}🤖 Auto-Reply an {sender_handle} gesendet.{RESET}")
 
-        # Abwesenheitsmodus-Änderungen behandeln
         current_away_state = config.get("away", False)
         if last_away_state != current_away_state:
             last_away_state = current_away_state
@@ -221,13 +173,6 @@ def listen_on_port(port, known_users, config):
                             print("   " + line.strip())
                     os.remove(offline_msg_path)
 
-## @brief Startet den Netzwerkdienst in einem separaten Thread.
-# @param known_users Dictionary bekannter Nutzer.
-# @param config Konfigurationsdictionary.
-# @details
-# 1. Sendet JOIN-Broadcast
-# 2. Startet listen_on_port im Hintergrund
-# 3. Läuft bis zum KeyboardInterrupt.
 def run_network_process(known_users, config):
     handle = config["handle"]
     port = config["port"][0]

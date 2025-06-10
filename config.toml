@@ -6,9 +6,7 @@
 
 # Der Benutzername (Handle), mit dem du im Netzwerk sichtbar bist.
 # Muss eindeutig sein, wenn mehrere Teilnehmer gleichzeitig aktiv sind.
-
-<<<<<<< HEAD
-handle = "Yunus"
+handle = "Bilal"
 
 # UDP-Port, auf dem dieser Client Nachrichten empfängt.
 # Trage hier einen freien Port ein (z. B. 5000, 5001, 5002 ...).
