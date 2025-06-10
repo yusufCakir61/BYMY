@@ -12,7 +12,7 @@ handle = "Bilal"
 # UDP-Port, auf dem dieser Client Nachrichten empfängt.
 # Trage hier einen freien Port ein (z. B. 5000, 5001, 5002 ...).
 
-port = [6000]
+port = [5000]
 
 # UDP-Port für Discovery (WHO/ JOIN).
 # Alle Clients müssen denselben Wert nutzen, um sich gegenseitig zu finden.
