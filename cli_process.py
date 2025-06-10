@@ -2,7 +2,7 @@ import os
 import time
 from network_process import send_msg, send_who, send_image
 
-# ANSI-Farben für Terminalausgabe
+# ANSI-Farben für Terminalausgabe:
 RESET = "\033[0m"
 CYAN = "\033[96m"
 GREEN = "\033[92m"
