@@ -4,7 +4,7 @@ import os
 # \file config_handler.py
 # \brief Verwaltet das Laden der Konfigurationsdatei für den Chat-Client.
 #
-# Diese Datei enthält die Logik zum Einlesen einer TOML-Konfigurationsdatei
+# Diese Datei enthält die Logik zum Einlesen einer TOML-Konfigurationsdatei,
 # aus der z. B. der Benutzername (Handle) und andere Parameter ausgelesen werden.
 
 # \brief Pfad zur Konfigurationsdatei

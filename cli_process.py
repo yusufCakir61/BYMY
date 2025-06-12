@@ -1,131 +1,151 @@
-import os
-import time
+import os, time, sys
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 from network_process import send_msg, send_who, send_image
 
-# ANSI-Farben für Terminalausgabe:
-RESET = "\033[0m"
-CYAN = "\033[96m"
-GREEN = "\033[92m"
+# ANSI-Farben
+RESET  = "\033[0m"
+GREEN  = "\033[92m"     # eigene Nachrichten
+BLUE   = "\033[94m"     # empfangen
 YELLOW = "\033[93m"
-RED = "\033[91m"
-MAGENTA = "\033[95m"
-BOLD = "\033[1m"
+RED    = "\033[91m"
+CYAN   = "\033[96m"
+MAG    = "\033[95m"
+BOLD   = "\033[1m"
 
-## \file cli_process.py
-#  \brief Textbasierte Benutzeroberfläche (CLI) für den BYMY-Chat.
-#
-#  Dieses Modul stellt eine Kommandozeilen-Schnittstelle bereit, 
-#  mit der Benutzer Nachrichten senden, Bilder verschicken, Teilnehmer abfragen 
-#  und den Abwesenheitsmodus steuern können.
+# ───────────────── Hilfe ────────────────────────────────────────────────
+def show_intro():
+    print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}")
+    print(f"""
+{RED}Verfügbare Befehle:{RESET}
+  {YELLOW}who{RESET}              – Aktive Nutzer anzeigen
+  {YELLOW}online{RESET}           – Du bist wieder da
+  {YELLOW}offline{RESET}          – Abwesenheitsmodus aktivieren + Autoreply
+  {YELLOW}send <bild>{RESET}      – Bild senden (Dateiname reicht)
+  {YELLOW}/name{RESET}            – Chatpartner wechseln
+  {YELLOW}hilfe{RESET}            – Diese Hilfe erneut anzeigen
+  {YELLOW}exit{RESET}             – Beenden
+""")
 
-## \brief Startet die textbasierte Chat-Oberfläche (Command Line Interface).
+# ───────────────── Chat-Ausgabe ─────────────────────────────────────────
+def display_chat(msg, sent=True, sender=""):
+    for line in msg.strip().split("\n"):
+        if sent:
+            print(f"{'':>40}{GREEN}Du: {line}{RESET}")
+        else:
+            print(f"{BLUE}{sender}:{RESET} {line}")
+
+# ───────────────── Bildsuche ────────────────────────────────────────────
+def find_file(name):
+    for root, _, files in os.walk(os.path.expanduser("~")):
+        for f in files:
+            if f.lower().startswith(name.lower()):
+                return os.path.join(root, f)
+    return None
+
+# ───────────────── Haupt-Loop ───────────────────────────────────────────
 def run_cli(config, known_users):
-    config["away"] = False
+    config.setdefault("autoreply", "Bin gerade offline.")
+    session      = PromptSession()
+    offline_txt  = os.path.join("receive", "offline_messages.txt")
+    own_handle   = config.get("handle", "Ich")
+
+    show_intro()
+    current_chat = input(f"{MAG}➤ Gebe 'who' ein um zu starten! {RESET}")
 
     while True:
-        print(f"\n{BOLD}{CYAN}========== BYMY CHAT =========={RESET}")
-        print(f"{YELLOW}1){RESET} Nachricht senden")
-        print(f"{YELLOW}2){RESET} Bild senden")
-        print(f"{YELLOW}3){RESET} Teilnehmer anzeigen (WHO)")
-        print(f"{YELLOW}4){RESET} Abwesenheitsmodus EIN/AUS")
-        print(f"{YELLOW}5){RESET} Beenden")
-        print(f"{CYAN}==============================={RESET}")
-
-        choice = input(f"{MAGENTA}➤ Auswahl: {RESET}")
-        print("")
-
-        # === OPTION 1: Nachricht senden ===
-        if choice == "1":
-            handle = input("Empfänger-Handle: ")
-            message = input("Nachricht: ")
-
-            if handle not in known_users:
-                print(f"{RED}⚠ Nutzer '{handle}' nicht bekannt. Bitte zuerst WHO ausführen.{RESET}")
-                continue
-
-            send_msg(handle, message, known_users, config["handle"])
-            print(f"{GREEN}✔ Nachricht gesendet an {handle}.{RESET}")
-
-        # === OPTION 2: Bild senden ===
-        elif choice == "2":
-            handle = input("Empfänger: ")
-
-            if handle not in known_users:
-                print(f"{RED}⚠ Nutzer '{handle}' nicht bekannt. Bitte zuerst WHO ausführen.{RESET}")
-                continue
-
-            folder = "send_img"
-            images = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-
-            if not images:
-                print(f"{RED}⚠ Kein Bild im Ordner 'send_img/' gefunden.{RESET}")
-                continue
-
-            print(f"\n{BOLD}Verfügbare Bilder:{RESET}")
-            for idx, name in enumerate(images):
-                print(f"  {YELLOW}{idx+1}){RESET} {name}")
-
-            try:
-                num = int(input(f"{MAGENTA}➤ Nummer eingeben: {RESET}")) - 1
-                if not 0 <= num < len(images):
-                    print(f"{RED}❌ Ungültige Nummer.{RESET}")
-                    continue
-
-                path = os.path.join(folder, images[num])
-                with open(path, "rb") as f:
-                    data = f.read()
-
-                send_image(handle, path, data, known_users, config["handle"])
-                print(f"{GREEN}✔ Bild '{images[num]}' erfolgreich gesendet an {handle}.{RESET}")
-            except Exception as e:
-                print(f"{RED}Fehler beim Senden: {e}{RESET}")
-
-        # === OPTION 3: WHO-Anfrage ===
-        elif choice == "3":
-            send_who(config["whoisport"])
-            print(f"{YELLOW}⏳ Warte auf Antwort von anderen Clients...{RESET}")
-            time.sleep(2)
-
-            print(f"\n{BOLD}🌐 Aktuelle bekannte Nutzer:{RESET}")
-            if known_users:
-                for h, (ip, port) in known_users.items():
-                    print(f"   • {GREEN}{h}{RESET}")
-            else:
-                print(f"   {RED}Keine Nutzer gefunden.{RESET}")
-
-        # === OPTION 4: Abwesenheitsmodus toggeln ===
-        elif choice == "4":
-            config["away"] = not config.get("away", False)
-            own_handle = config.get("handle", "Unbekannt")
-
-            if config["away"]:
-                print(f"{RED}🔴 Abwesenheitsmodus AKTIV. Auto-Reply ist eingeschaltet.{RESET}")
-                status_message = "Ich bin jetzt offline."
-            else:
-                print(f"{GREEN}🔵 Abwesenheitsmodus DEAKTIVIERT.{RESET}")
-                status_message = "Ich bin wieder online."
-
-                # Verpasste Nachrichten anzeigen
-                offline_path = os.path.join("receive", "offline_messages.txt")
-                if os.path.exists(offline_path):
-                    print(f"\n{BOLD}📬 Verpasste Nachrichten während deiner Abwesenheit:{RESET}")
-                    with open(offline_path, "r", encoding="utf-8") as f:
-                        for line in f:
-                            print("   " + line.strip())
-                    os.remove(offline_path)
-                else:
-                    print(f"{CYAN}📭 Keine verpassten Nachrichten.{RESET}")
-
-            # Statusnachricht senden
-            for handle in known_users:
-                if handle != own_handle:
-                    send_msg(handle, status_message, known_users, own_handle)
-
-        # === OPTION 5: Beenden ===
-        elif choice == "5":
-            print(f"{MAGENTA}👋 Chat wird beendet...{RESET}")
+        if current_chat.lower() == "exit":
+            print(f"{RED}👋 Chat beendet. Bis bald!{RESET}")
             break
 
-        # === Ungültige Eingabe ===
-        else:
-            print(f"{RED}❌ Ungültige Eingabe. Bitte eine Zahl von 1 bis 5 eingeben.{RESET}")
+        # —— WHO ——
+        if current_chat.lower() == "who":
+            send_who(config["whoisport"]); time.sleep(2)
+            print(f"{BOLD} {RED}🌐 Aktive Nutzer:{RESET}" if known_users else f"{RED}❌ Keine Nutzer gefunden.{RESET}")
+            [print(f"  • {CYAN}{h}{RESET}") for h in known_users]
+            print("")
+            current_chat = input(f"{MAG}➤ Gib den Namen eines Chatpartners ein oder einen Befehl: {RESET}"); continue
+        print("")
+
+        # —— OFFLINE ——
+        if current_chat.lower() == "offline":
+            if not config.get("away", False):
+                config["away"] = True
+                print("")
+                print(f"{RED}🔴 Abwesenheitsmodus aktiviert.{RESET}")
+                auto = config["autoreply"]
+                for h in known_users:
+                    if h != own_handle: send_msg(h, auto, known_users, own_handle)
+            else:
+                print(f"{YELLOW}⚠ Bereits im Abwesenheitsmodus.{RESET}")
+            current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}"); continue
+
+        # —— ONLINE ——
+        if current_chat.lower() == "online":
+            if config.get("away", False):
+                config["away"] = False
+                print(f"{GREEN}🔵 Du bist wieder online.{RESET}")
+                for h in known_users:
+                    if h != own_handle: send_msg(h, "Ich bin wieder da.", known_users, own_handle)
+                if os.path.exists(offline_txt):
+                    print("")
+                    print(f"{BOLD} {RED} Verpasste Nachrichten während deiner Abwesenheit:{RESET}")
+                    [print(f" {l.strip()}{RESET}") for l in open(offline_txt, encoding="utf-8")]
+                    os.remove(offline_txt)
+                    print("")
+                else:
+                    print(f"{CYAN}Keine verpassten Nachrichten.{RESET}")
+                    print("")
+            else:
+                print(f"{YELLOW}⚠ Du warst nicht offline.{RESET}")
+            current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}"); continue
+
+        # —— Hilfe ——
+        if current_chat.lower() == "hilfe":
+            show_intro()
+            current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}"); continue
+
+        # —— Handle mit / wechseln ——
+        if current_chat.startswith("/"):
+            current_chat = current_chat[1:]; continue
+
+        # —— Unbekannter Chatpartner ——
+        if current_chat not in known_users:
+            print(f"{RED}⚠ Nutzer '{current_chat}' nicht bekannt.{RESET}")
+            current_chat = input(f"{MAG}➤ Chatpartner: {RESET}"); continue
+
+        print(f"{CYAN}💬 Chat mit {current_chat} gestartet.{RESET}")
+
+        # ───────────────── Chat-Eingabe-Loop ────────────────────────────
+        while True:
+            try:
+                with patch_stdout():
+                    msg = session.prompt("> ")
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{RED}Beende Chat...{RESET}"); return
+
+            if msg.lower() == "exit":
+                print(f"{RED}👋 Chat beendet. Bis bald!{RESET}")
+                return
+
+            if msg.lower() in ["who", "online", "offline", "hilfe"] or msg.startswith("/"):
+                current_chat = msg
+                break   
+
+            # Eingabezeile entfernen
+            sys.stdout.write("\033[F\033[K"); sys.stdout.flush()
+
+            # —— Bild senden ——
+            if msg.startswith("send "):
+                name = msg.split(" ",1)[1].strip()
+                path = find_file(name)
+                if not path:
+                    print(f"{RED}❌ Bild nicht gefunden: {name}{RESET}"); continue
+                with open(path,"rb") as f: data = f.read()
+                send_image(current_chat, path, data, known_users, own_handle)
+                display_chat(f"[Bild gesendet: {os.path.basename(path)}]", sent=True)
+                continue
+
+            # —— Text senden ——
+            send_msg(current_chat, msg, known_users, own_handle)
+            display_chat(msg, sent=True)

@@ -11,7 +11,7 @@ from network_process import run_network_process
 from cli_process import run_cli
 
 # \file main.py
-# \brief Hauptmodul zum Starten des BYMY Chatprogramms mit Discovery, Netzwerk und CLI.
+# \brief Hauptmodul zum Starten des BYMY-Chatprogramms mit Discovery, Netzwerk und CLI.
 #
 # Dieses Skript lädt die Konfiguration und startet drei Prozesse:
 # - einen für das Discovery-Protokoll (JOIN/WHO),
