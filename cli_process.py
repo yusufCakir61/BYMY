@@ -84,7 +84,7 @@ def run_cli(config, known_users):
 
     while True:
         if current_chat.lower() == "exit":
-            print(f"{RED}Chat wird beendet...{RESET}")
+            print(f"{RED}Chat wird beendet... Bis Bald{RESET}")
 
             # Nachricht an alle bekannten Nutzer senden
             for h in known_users:
@@ -97,11 +97,11 @@ def run_cli(config, known_users):
             # LEAVE senden
             try:
                 send_leave(own_handle, config["whoisport"])
-                print(f"{GREEN}LEAVE gesendet an Discovery.{RESET}")
+               # print(f"{GREEN}LEAVE gesendet an Discovery.{RESET}")
             except Exception as e:
                 print(f"{RED}❌ Fehler beim Senden von LEAVE: {e}{RESET}")
 
-            print(f"{RED}Chat beendet. Bis bald!{RESET}")
+           # print(f"{RED}Chat beendet. Bis bald!{RESET}")
             break
 
         if current_chat.lower() == "who":
