@@ -1,26 +1,32 @@
-import toml
 import os
+import toml
 
-# \file config_handler.py
-# \brief Verwaltet das Laden der Konfigurationsdatei für den Chat-Client.
-#
-# Diese Datei enthält die Logik zum Einlesen einer TOML-Konfigurationsdatei,
-# aus der z. B. der Benutzername (Handle) und andere Parameter ausgelesen werden.
+# ─────────────────────────────────────────────────────────────
+# config_handler.py
+# Zweck: Laden und Verwalten der Konfiguration für den Chat-Client
+# ─────────────────────────────────────────────────────────────
 
-# Pfad zur Konfigurationsdatei
-# Der Pfad wird relativ zum aktuellen Dateistandort berechnet.
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.toml")
+# Pfad zur Konfigurationsdatei wird relativ zu diesem File berechnet
+BASE_DIR = os.path.dirname(__file__)
+CONFIG_FILENAME = "config.toml"
+CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILENAME)
 
-## \brief Lädt die Konfigurationsdaten aus der Datei 'config.toml'.
-##
-## Diese Funktion stellt sicher, dass die Datei existiert, und lädt
-## dann ihren Inhalt als Dictionary.
-##
-## \return Dictionary mit Konfigurationseinträgen (z. B. 'handle', 'port', etc.).
-## \throws FileNotFoundError Wenn die Datei nicht existiert.
+# ─────────────────────────────────────────────────────────────
+# Funktion: Konfiguration aus TOML-Datei laden
+# Gibt ein Dictionary zurück mit z. B. 'handle', 'port', etc.
+# ─────────────────────────────────────────────────────────────
 def load_config():
-    if not os.path.exists(CONFIG_PATH):
-        raise FileNotFoundError(f"Konfigurationsdatei '{CONFIG_PATH}' nicht gefunden.")
-    
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return toml.load(f)
+    """
+    Lädt Konfigurationswerte aus 'config.toml'.
+    Gibt ein Dictionary zurück mit allen Werten.
+    """
+
+    if not os.path.isfile(CONFIG_PATH):
+        raise FileNotFoundError(
+            f"❌ Konfigurationsdatei nicht gefunden: '{CONFIG_PATH}'"
+        )
+
+    with open(CONFIG_PATH, mode="r", encoding="utf-8") as conf_file:
+        config = toml.load(conf_file)
+
+    return config
