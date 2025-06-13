@@ -18,7 +18,7 @@ os.makedirs("receive", exist_ok=True)
 # Autoreply-Verfolgung
 autoreplied_to = set()
 
-# 👇 Sichere Ausgabe für parallele Threads (verschiebt Eingabezeile nicht)
+# Sichere Ausgabe für parallele Threads (verschiebt Eingabezeile nicht)
 def safe_print_from_thread(text):
     sys.stdout.write("\r\033[K")     # Zeile komplett löschen
     print(text)
