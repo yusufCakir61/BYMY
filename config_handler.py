@@ -7,7 +7,7 @@ import os
 # Diese Datei enthält die Logik zum Einlesen einer TOML-Konfigurationsdatei,
 # aus der z. B. der Benutzername (Handle) und andere Parameter ausgelesen werden.
 
-# \brief Pfad zur Konfigurationsdatei
+# Pfad zur Konfigurationsdatei
 # Der Pfad wird relativ zum aktuellen Dateistandort berechnet.
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.toml")
 
