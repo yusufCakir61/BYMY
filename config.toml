@@ -17,7 +17,7 @@ port = [5001]
 # UDP-Port für Discovery (WHO/ JOIN).
 # Alle Clients müssen denselben Wert nutzen, um sich gegenseitig zu finden.
 
-whoisport = 4000
+whoisport = 5000
 
 # Automatische Antwortnachricht, wenn du gerade nicht aktiv bist.
 # Diese wird (optional) als Rückmeldung gesendet.
