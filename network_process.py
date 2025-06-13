@@ -12,7 +12,7 @@ YELLOW = "\033[93m"
 RED    = "\033[91m"
 GREEN  = "\033[92m"
 
-# Ordner für empfangene Nachrichten & Bilder automatisch anlegen
+# Ordner für empfangene Nachrichten & Bilder automatisch anlegen:
 os.makedirs("receive", exist_ok=True)
 
 # Autoreply-Verfolgung
@@ -22,7 +22,7 @@ autoreplied_to = set()
 def safe_print_from_thread(text):
     sys.stdout.write("\r\033[K")     # Zeile komplett löschen
     print(text)
-    sys.stdout.write("> ")           # Eingabe-Prompt zurückholen
+    sys.stdout.write("> ")           # Eingabe-schnell holen
     sys.stdout.flush()
 
 def send_who(whoisport):
