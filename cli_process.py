@@ -114,7 +114,7 @@ def run_cli(config, known_users):
             print(f"{Rot}⚠ Nutzer '{current_chat}' nicht bekannt.{RESET}")
             current_chat = input(f"{Mag}➤ Chatpartner: {RESET}"); continue
 
-        print(f"{CYAN}💬 Chat mit {current_chat} gestartet.{RESET}")
+        print(f"{Cyan}💬 Chat mit {current_chat} gestartet.{RESET}")
 
         # ───────────────── Chat-Eingabe-Loop ────────────────────────────
         while True:
