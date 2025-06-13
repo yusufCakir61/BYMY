@@ -51,7 +51,7 @@ def run_cli(config, known_users):
     own_handle   = config.get("handle", "Ich")
 
     show_intro()
-    current_chat = input(f"{MAG}➤ Gebe 'who' ein um zu starten! {RESET}")
+    current_chat = input(f"{Mag}➤ Gebe 'who' ein um zu starten! {RESET}")
 
     while True:
         if current_chat.lower() == "exit":
