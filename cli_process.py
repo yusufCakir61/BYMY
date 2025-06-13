@@ -15,11 +15,11 @@ BOLD   = "\033[1m"
 
 # ───────────────── Hilfe ───────────────────────────────────────────────
 def show_intro():
-    print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}")
+    print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT :) {RESET}")
     print(f"""
 {RED}Verfügbare Befehle:{RESET}
   {YELLOW}who{RESET}              – Aktive Nutzer anzeigen
-  {YELLOW}online{RESET}           – Du bist wieder da
+  {YELLOW}online{RESET}           – Du bist wieder online
   {YELLOW}offline{RESET}          – Abwesenheitsmodus aktivieren + Autoreply
   {YELLOW}send <bild>{RESET}      – Bild senden (Dateiname reicht)
   {YELLOW}/name{RESET}            – Chatpartner wechseln
