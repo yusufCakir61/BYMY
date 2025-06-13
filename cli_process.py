@@ -45,7 +45,7 @@ def find_file(name):
 
 # ───────────────── Haupt-Loop ───────────────────────────────────────────
 def run_cli(config, known_users):
-    config.setdefault("autoreply", "Bin gerade offline.")
+    config.setdefault("autoreply", "Bin gerade off.")
     session      = PromptSession()
     offline_txt  = os.path.join("receive", "offline_messages.txt")
     own_handle   = config.get("handle", "Ich")
