@@ -3,8 +3,11 @@ import threading
 import os
 import math
 import sys
+import json
+import signal
+import subprocess
+from config_handler import get_config
 
-# Farben
 RESET  = "\033[0m"
 BLUE   = "\033[94m"
 CYAN   = "\033[96m"
@@ -12,18 +15,22 @@ YELLOW = "\033[93m"
 RED    = "\033[91m"
 GREEN  = "\033[92m"
 
-# Ordner für empfangene Nachrichten & Bilder automatisch anlegen:
+AWAY_FLAG = "away.flag"
 os.makedirs("receive", exist_ok=True)
-
-# Autoreply-Verfolgung
 autoreplied_to = set()
 
-# Sichere Ausgabe für parallele Threads (verschiebt Eingabezeile nicht)
 def safe_print_from_thread(text):
-    sys.stdout.write("\r\033[K")     # Zeile komplett löschen
+    sys.stdout.write("\r\033[K")
     print(text)
-    sys.stdout.write("> ")           # Eingabe-schnell holen
+    sys.stdout.write("> ")
     sys.stdout.flush()
+
+def save_known_users(known_users):
+    try:
+        with open("known_users.json", "w") as f:
+            json.dump(known_users, f)
+    except Exception as e:
+        print(f"{RED}[FEHLER] Speichern von known_users fehlgeschlagen: {e}{RESET}")
 
 def send_who(whoisport):
     msg = "WHO\n"
@@ -33,6 +40,12 @@ def send_who(whoisport):
 
 def send_join(handle, port, whoisport):
     msg = f"JOIN {handle} {port}\n"
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(msg.encode("utf-8"), ("255.255.255.255", whoisport))
+
+def send_leave(handle, whoisport):
+    msg = f"LEAVE {handle}\n"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(msg.encode("utf-8"), ("255.255.255.255", whoisport))
@@ -112,15 +125,16 @@ def listen_on_port(port, known_users, config):
                     save_path = os.path.join(image_dir, info["filename"])
                     with open(save_path, "wb") as f:
                         f.write(ordered_data)
-
-                    safe_print_from_thread(f"{CYAN}{info['from']}: Bild gesendet: {info['filename']}{RESET}")
-
-                    if "image_events" in config:
-                        config["image_events"].append({
-                            "from": info["from"],
-                            "filename": info["filename"],
-                            "path": save_path
-                        })
+                    safe_print_from_thread(f"{CYAN}[{info['from']}] Bild empfangen: {info['filename']}{RESET}")
+                    try:
+                        if os.name == "posix":
+                            subprocess.run(["xdg-open", save_path], check=False)
+                        elif os.name == "nt":
+                            os.startfile(save_path)
+                        elif sys.platform == "darwin":
+                            subprocess.run(["open", save_path], check=False)
+                    except Exception as e:
+                        safe_print_from_thread(f"{RED}Bildanzeige fehlgeschlagen: {e}{RESET}")
                     del incoming_images[key]
             continue
 
@@ -133,41 +147,58 @@ def listen_on_port(port, known_users, config):
                 if len(parts) == 3:
                     handle, ip, port_str = parts
                     known_users[handle] = (ip, int(port_str))
+            save_known_users(known_users)
+            # safe_print_from_thread(f"{GREEN}[DISCOVERY] Benutzerliste aktualisiert ({len(known_users)} Einträge){RESET}")
+            continue
 
         elif msg.startswith("MSG"):
             parts = msg.split(" ", 2)
             if len(parts) == 3:
                 _, sender_handle, text = parts
-
-                is_away = config.get("away", False)
                 own_handle = config.get("handle")
                 is_autoreply_enabled = config.get("autoreply", False)
                 is_autoreply_msg = text == config.get("autoreply", "")
-
                 if sender_handle == own_handle:
                     continue
 
+                is_away = os.path.exists(AWAY_FLAG)
                 if is_away:
                     with open(offline_msg_path, "a", encoding="utf-8") as f:
                         f.write(f"{sender_handle}: {text}\n")
                 else:
-                    safe_print_from_thread(f"{BLUE}{sender_handle}:{RESET} {text}")
+                    safe_print_from_thread(f"{BLUE}[{sender_handle}]{RESET} {text}")
 
                 if is_away and is_autoreply_enabled and not is_autoreply_msg and sender_handle not in autoreplied_to:
                     send_msg(sender_handle, config["autoreply"], known_users, own_handle)
                     autoreplied_to.add(sender_handle)
+
+def handle_sigterm(signum, frame):
+    config = get_config()
+    handle = config.get("handle")
+    whoisport = config.get("whoisport")
+    send_leave(handle, whoisport)
+   #  print(f"{RED}[NETWORK] LEAVE-Nachricht gesendet. Beende...{RESET}")
+    sys.exit(0)
 
 def run_network_process(known_users, config):
     handle = config["handle"]
     port = config["port"][0]
     whoisport = config["whoisport"]
     send_join(handle, port, whoisport)
-
+    print(f"{YELLOW}[NETWORK] gestartet auf Port {port}{RESET}")
     t = threading.Thread(target=listen_on_port, args=(port, known_users, config))
     t.daemon = True
     t.start()
-
     try:
         threading.Event().wait()
     except KeyboardInterrupt:
         pass
+
+def start(known_users):
+    config = get_config()
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    signal.signal(signal.SIGINT, handle_sigterm)
+    run_network_process(known_users, config)
+
+if __name__ == "__main__":
+    start({})

@@ -1,128 +1,187 @@
-import os
-import time
-import sys
-
+import os, time, sys, json, subprocess, socket, toml
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
+from config_handler import get_config
+from network_process import send_msg, send_who, send_image, send_join, send_leave
 
-from network_process import send_msg, send_who, send_image
+RESET = "\033[0m"; GREEN = "\033[92m"; BLUE = "\033[94m"
+YELLOW = "\033[93m"; RED = "\033[91m"; CYAN = "\033[96m"
+MAG = "\033[95m"; BOLD = "\033[1m"
 
-# ───────────────── ANSI-Farben ─────────────────
-RESET  = "\033[0m"
-GREEN  = "\033[92m"  # eigene Nachrichten
-BLUE   = "\033[94m"  # empfangen
-YELLOW = "\033[93m"
-RED    = "\033[91m"
-CYAN   = "\033[96m"
-MAG    = "\033[95m"
-BOLD   = "\033[1m"
+AWAY_FLAG = "away.flag"
+CONFIG_FILE = "config.toml"
 
-# ───────────────── Intro ─────────────────
+def update_config_value(key, value):
+    try:
+        config = toml.load(CONFIG_FILE)
+        config[key] = value
+        with open(CONFIG_FILE, "w") as f:
+            toml.dump(config, f)
+        print(f"{GREEN}✓ {key} erfolgreich geändert auf: {value}{RESET}")
+    except Exception as e:
+        print(f"{RED}❌ Fehler beim Ändern von {key}: {e}{RESET}")
+
 def show_intro():
-    print(f"{BOLD}{BLUE}Willkommen beim BYMY-CHAT :) {RESET}")
-    print(f"""
-{GREEN}Verfügbare Befehle:{RESET}
-  {YELLOW}who{RESET}              – Aktive Nutzer anzeigen
-  {YELLOW}online{RESET}           – Du bist wieder online
-  {YELLOW}offline{RESET}          – Abwesenheitsmodus aktivieren + Autoreply
-  {YELLOW}send <bild>{RESET}      – Bild senden (Dateiname reicht)
-  {YELLOW}/name{RESET}            – Chatpartner wechseln
-  {YELLOW}hilfe{RESET}            – Diese Hilfe erneut anzeigen
-  {YELLOW}exit{RESET}             – Beenden
-""")
+    print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}\n")
+    print(f"""Verfügbare Befehle:{RESET}
+  {RED}who{RESET}                – Aktive Nutzer anzeigen
+  {RED}online{RESET}             – Du bist wieder da
+  {RED}offline{RESET}            – Abwesenheitsmodus aktivieren + Autoreply
+  {RED}send <bild>{RESET}        – Bild senden (Dateiname reicht)
+  {RED}/autoreply <text>{RESET}  – Autoreply-Nachricht ändern
+  {RED}/name <nutzer>{RESET}     – Chatpartner wechseln
+  {RED}hilfe{RESET}              – Diese Hilfe erneut anzeigen
+  {RED}exit{RESET}               – Beenden\n""")
 
-# ───────────────── Chat-Ausgabe ─────────────────
-def display_chat(message, sent=True, sender=""):
-    for line in message.strip().split("\n"):
+def display_chat(msg, sent=True, sender=""):
+    for line in msg.strip().split("\n"):
         if sent:
             print(f"{'':>40}{GREEN}Du: {line}{RESET}")
         else:
             print(f"{BLUE}{sender}:{RESET} {line}")
 
-# ───────────────── Datei-Suche ─────────────────
-def find_file(filename):
+def find_file(name):
     for root, _, files in os.walk(os.path.expanduser("~")):
-        for file in files:
-            if file.lower().startswith(filename.lower()):
-                return os.path.join(root, file)
+        for f in files:
+            if f.lower().startswith(name.lower()):
+                return os.path.join(root, f)
     return None
 
-# ───────────────── Haupt-Loop ─────────────────
+def init_known_users_file():
+    if not os.path.exists("known_users.json"):
+        with open("known_users.json", "w") as f:
+            json.dump({}, f)
+
+def load_known_users():
+    try:
+        with open("known_users.json", "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def check_network_running(port):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.bind(("", port))
+        s.close()
+        return False
+    except OSError:
+        return True
+
 def run_cli(config, known_users):
-    config.setdefault("autoreply", "Bin gerade off.")
+    config.setdefault("autoreply", "Bin gerade offline.")
     session = PromptSession()
-    offline_path = os.path.join("receive", "offline_messages.txt")
+    offline_txt = os.path.join("receive", "offline_messages.txt")
     own_handle = config.get("handle", "Ich")
 
+    # JOIN senden beim Start
+    raw_port = config.get("port")
+    port = raw_port[0] if isinstance(raw_port, list) else int(raw_port)
+    send_join(own_handle, port, config["whoisport"])
+
     show_intro()
-    current_chat = input(f"{MAG}➤ Gebe 'who' ein um zu starten! {RESET}")
+    current_chat = input(f"{MAG}➤ Gebe zuerst 'who' ein um zu starten! {RESET}")
 
     while True:
         if current_chat.lower() == "exit":
-            print(f"{RED}👋 Chat beendet. Bis bald!{RESET}")
+            print(f"{RED}Chat wird beendet...{RESET}")
+
+            # Nachricht an alle bekannten Nutzer senden
+            for h in known_users:
+                if h != own_handle:
+                    try:
+                        send_msg(h, f"[{own_handle}] hat den Chat verlassen.", known_users, own_handle)
+                    except Exception as e:
+                        print(f"{YELLOW}⚠ Nachricht an {h} konnte nicht gesendet werden: {e}{RESET}")
+
+            # LEAVE senden
+            try:
+                send_leave(own_handle, config["whoisport"])
+                print(f"{GREEN}LEAVE gesendet an Discovery.{RESET}")
+            except Exception as e:
+                print(f"{RED}❌ Fehler beim Senden von LEAVE: {e}{RESET}")
+
+            print(f"{RED}Chat beendet. Bis bald!{RESET}")
             break
 
-        # WHO
         if current_chat.lower() == "who":
             send_who(config["whoisport"])
-            time.sleep(2)
-            print(f"{BOLD} {RED}🌐 Aktive Nutzer:{RESET}" if known_users else f"{RED}❌ Keine Nutzer gefunden.{RESET}")
-            for h in known_users:
-                print(f"  • {CYAN}{h}{RESET}")
-            print("")
+            found = False
+            for _ in range(6):
+                time.sleep(0.5)
+                known_users.update(load_known_users())
+                if known_users:
+                    found = True
+                    break
+            if found:
+                print(f"{BOLD}{RED}🌐 Aktive Nutzer:{RESET}")
+                [print(f"  • {CYAN}{h}{RESET}") for h in known_users]
+            else:
+                print(f"{RED}❌ Keine Nutzer gefunden.{RESET}")
             current_chat = input(f"{MAG}➤ Gib den Namen eines Chatpartners ein oder einen Befehl: {RESET}")
             continue
 
-        # OFFLINE
         if current_chat.lower() == "offline":
             if not config.get("away", False):
                 config["away"] = True
-                print("")
-                print(f"{RED}🔴 Abwesenheitsmodus aktiviert.{RESET}")
-                autoreply_text = config["autoreply"]
+                open(AWAY_FLAG, "w").close()
+                print(f"{RED}Abwesenheitsmodus aktiviert.{RESET}")
+                auto = config["autoreply"]
                 for h in known_users:
                     if h != own_handle:
-                        send_msg(h, autoreply_text, known_users, own_handle)
+                        send_msg(h, auto, known_users, own_handle)
             else:
-                print(f"{YELLOW}⚠ Bereits im Abwesenheitsmodus.{RESET}")
+                print(f"{YELLOW}Bereits im Abwesenheitsmodus.{RESET}")
             current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}")
             continue
 
-        # ONLINE
         if current_chat.lower() == "online":
             if config.get("away", False):
                 config["away"] = False
-                print(f"{GREEN}🔵 Du bist wieder online.{RESET}")
+                if os.path.exists(AWAY_FLAG):
+                    os.remove(AWAY_FLAG)
+                print(f"{GREEN}Du bist wieder online.{RESET}")
                 for h in known_users:
                     if h != own_handle:
                         send_msg(h, "Ich bin wieder da.", known_users, own_handle)
-
-                if os.path.exists(offline_path):
-                    print("")
-                    print(f"{BOLD} {RED} Verpasste Nachrichten während deiner Abwesenheit:{RESET}")
-                    for line in open(offline_path, encoding="utf-8"):
-                        print(f" {line.strip()}{RESET}")
-                    os.remove(offline_path)
-                    print("")
+                if os.path.exists(offline_txt):
+                    print(f"{BOLD}{RED} Verpasste Nachrichten während deiner Abwesenheit:{RESET}")
+                    [print(f" {l.strip()}{RESET}") for l in open(offline_txt, encoding="utf-8")]
+                    os.remove(offline_txt)
                 else:
-                    print(f"{CYAN}Keine verpassten Nachrichten.{RESET}\n")
+                    print(f"{CYAN}Keine verpassten Nachrichten.{RESET}")
             else:
-                print(f"{YELLOW}⚠ Du warst nicht offline.{RESET}")
+                print(f"{YELLOW}Du warst nicht offline.{RESET}")
             current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}")
             continue
 
-        # Hilfe
         if current_chat.lower() == "hilfe":
             show_intro()
             current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}")
             continue
 
-        # /name Wechsel
-        if current_chat.startswith("/"):
-            current_chat = current_chat[1:]
+        if current_chat.startswith("/autoreply "):
+            new_reply = current_chat[len("/autoreply "):].strip()
+            update_config_value("autoreply", new_reply)
+            config["autoreply"] = new_reply
+            current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}")
             continue
 
-        # Unbekannter Nutzer
+        if current_chat.startswith("/name"):
+            new_chat = current_chat[len("/name"):].strip()
+            if new_chat in known_users:
+                print(f"{CYAN}↪ Wechsel zu {new_chat}{RESET}")
+                current_chat = new_chat
+            else:
+                print(f"{RED}⚠ Nutzer '{new_chat}' nicht bekannt.{RESET}")
+                current_chat = input(f"{MAG}➤ Chatpartner: {RESET}")
+            continue
+
+        if current_chat.startswith("/"):
+            print(f"{YELLOW}⚠ Unbekannter Befehl: {current_chat}{RESET}")
+            current_chat = input(f"{MAG}➤ Chatpartner oder Befehl: {RESET}")
+            continue
+
         if current_chat not in known_users:
             print(f"{RED}⚠ Nutzer '{current_chat}' nicht bekannt.{RESET}")
             current_chat = input(f"{MAG}➤ Chatpartner: {RESET}")
@@ -130,39 +189,102 @@ def run_cli(config, known_users):
 
         print(f"{CYAN}💬 Chat mit {current_chat} gestartet.{RESET}")
 
-        # Chat-Schleife
         while True:
             try:
                 with patch_stdout():
                     msg = session.prompt("> ")
             except (EOFError, KeyboardInterrupt):
-                print(f"\n{RED}Beende Chat...{RESET}")
+                print(f"\n{RED} 👋 Beende Chat...{RESET}")
                 return
 
             if msg.lower() == "exit":
-                print(f"{GREEN}👋 Chat beendet. Bis bald!{RESET}")
-                return
+                current_chat = "exit"
+                break
 
-            if msg.lower() in ["who", "online", "offline", "hilfe"] or msg.startswith("/"):
+            if msg.lower() in ["who", "online", "offline", "hilfe"] or msg.startswith("/") or msg.startswith("/name"):
                 current_chat = msg
                 break
 
             sys.stdout.write("\033[F\033[K")
             sys.stdout.flush()
 
-            # Bild senden
             if msg.startswith("send "):
-                filename = msg.split(" ", 1)[1].strip()
-                file_path = find_file(filename)
-                if not file_path:
-                    print(f"{RED}❌ Bild nicht gefunden: {filename}{RESET}")
+                name = msg.split(" ", 1)[1].strip()
+                path = find_file(name)
+                if not path:
+                    print(f"{RED}❌ Bild nicht gefunden: {name}{RESET}")
                     continue
-                with open(file_path, "rb") as f:
+                with open(path, "rb") as f:
                     data = f.read()
-                send_image(current_chat, file_path, data, known_users, own_handle)
-                display_chat(f"[Bild gesendet: {os.path.basename(file_path)}]", sent=True)
+                try:
+                    send_image(current_chat, path, data, known_users, own_handle)
+                except Exception:
+                    print(f"{RED}❌ Netzwerkverbindung zum Senden nicht verfügbar.{RESET}")
+                    continue
+                display_chat(f"[Bild gesendet: {os.path.basename(path)}]", sent=True)
                 continue
 
-            # Text senden
-            send_msg(current_chat, msg, known_users, own_handle)
-            display_chat(msg, sent=True)
+            try:
+                send_msg(current_chat, msg, known_users, own_handle)
+                display_chat(msg, sent=True)
+            except Exception:
+                print(f"{RED}❌ Nachricht konnte nicht gesendet werden – Netzwerkdienst nicht verfügbar.{RESET}")
+                continue
+
+def start(known_users):
+    config = get_config()
+    run_cli(config, known_users)
+
+if __name__ == "__main__":
+    config = get_config()
+    print(f"{YELLOW}[CLI] gestartet mit Handle: {config.get('handle')}{RESET}\n")
+
+    try:
+        ppid = os.getppid()
+        parent_name = subprocess.check_output(["ps", "-p", str(ppid), "-o", "comm="]).decode().strip()
+        from_main_sh = "main.sh" in parent_name
+    except:
+        print(f"{YELLOW}Hinweis: Startumgebung konnte nicht erkannt werden.{RESET}")
+        from_main_sh = False
+
+    init_known_users_file()
+
+    raw_port = config.get("port")
+    port = raw_port[0] if isinstance(raw_port, list) else int(raw_port)
+
+    net_running = check_network_running(port)
+
+    if not from_main_sh and not net_running:
+        print(f"{YELLOW}ACHTUNG: Netzwerk- und Discovery-Dienste müssen separat gestartet werden.{RESET}\n")
+
+    if not net_running:
+        print(f"{RED}ACHTUNG: Netzwerkdienst läuft nicht – Chat funktioniert nicht.{RESET}\n")
+
+    try:
+        run_cli(config, {})
+    except KeyboardInterrupt:
+        print(f"\n{RED}Unterbrochen mit Strg+C{RESET}")
+    finally:
+        try:
+            os.remove("known_users.json")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"{RED}❌ Fehler beim Löschen von known_users.json: {e}{RESET}")
+
+        if os.path.exists(AWAY_FLAG):
+            try:
+                os.remove(AWAY_FLAG)
+                print(f"{YELLOW}away.flag gelöscht.{RESET}")
+            except Exception as e:
+                print(f"{RED}❌ Fehler beim Löschen von away.flag: {e}{RESET}")
+
+        if not from_main_sh:
+            stop_script = os.path.join(os.path.dirname(__file__), "stop_all.sh")
+            if os.path.exists(stop_script) and os.access(stop_script, os.X_OK):
+                try:
+                    subprocess.run(["bash", stop_script])
+                except Exception as e:
+                    print(f"{RED}❌ Fehler beim Ausführen von stop_all.sh: {e}{RESET}")
+            else:
+                print(f"{RED}❌ stop_all.sh nicht gefunden oder nicht ausführbar.{RESET}")

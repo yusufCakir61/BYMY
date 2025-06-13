@@ -1,31 +1,5 @@
-# ============================================================
-# Konfigurationsdatei für den BYMY Chat-Client
-# Diese Datei wird beim Start des Programms eingelesen
-# und steuert grundlegende Verhaltensweisen und Einstellungen.
-# ============================================================
-
-# Der Benutzername (Handle), mit dem du im Netzwerk sichtbar bist.
-# Muss eindeutig sein, wenn mehrere Teilnehmer gleichzeitig aktiv sind.
-
-handle = "Musti"
-
-# UDP-Port, auf dem dieser Client Nachrichten empfängt.
-# Trage hier einen freien Port ein (z. B. 5000, 5001, 5002 ...).
-
-port = [5001]
-
-# UDP-Port für Discovery (WHO/ JOIN).
-# Alle Clients müssen denselben Wert nutzen, um sich gegenseitig zu finden.
-
-whoisport = 5000
-
-# Automatische Antwortnachricht, wenn du gerade nicht aktiv bist.
-# Diese wird (optional) als Rückmeldung gesendet.
-
-autoreply = "Ich bin gerade nicht da."
-
-# Zielordner für empfangene Bilder.
-# Der Ordner wird automatisch erstellt, falls er nicht existiert.
-# Pfadangabe kann relativ (z. B. "receive/") oder absolut sein.
-
+handle = "Bilal"
+port = [5000]
+whoisport = 4000
+autoreply = "ciao"
 imagepath = "receive/"
