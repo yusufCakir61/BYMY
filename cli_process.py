@@ -5,7 +5,7 @@ from network_process import send_msg, send_who, send_image
 
 # ANSI-Farben
 RESET  = "\033[0m"
-GREEN  = "\033[92m"     # eigene Nachrichten
+GREEN  = "\033[92m"     # eigene Nachricht(en)
 BLUE   = "\033[94m"     # empfangen
 YELLOW = "\033[93m"
 RED    = "\033[91m"
@@ -13,7 +13,7 @@ CYAN   = "\033[96m"
 MAG    = "\033[95m"
 BOLD   = "\033[1m"
 
-# ───────────────── Hilfe ────────────────────────────────────────────────
+# ───────────────── Hilfe ───────────────────────────────────────────────
 def show_intro():
     print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}")
     print(f"""
