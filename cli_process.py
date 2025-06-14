@@ -237,6 +237,7 @@ def start(known_users):
 
 if __name__ == "__main__":
     config = get_config()
+    print("")
     print(f"{YELLOW}[CLI] gestartet mit Handle: {config.get('handle')}{RESET}\n")
 
     try:

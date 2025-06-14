@@ -148,7 +148,6 @@ def listen_on_port(port, known_users, config):
                     handle, ip, port_str = parts
                     known_users[handle] = (ip, int(port_str))
             save_known_users(known_users)
-            # safe_print_from_thread(f"{GREEN}[DISCOVERY] Benutzerliste aktualisiert ({len(known_users)} Einträge){RESET}")
             continue
 
         elif msg.startswith("MSG"):
@@ -172,12 +171,18 @@ def listen_on_port(port, known_users, config):
                     send_msg(sender_handle, config["autoreply"], known_users, own_handle)
                     autoreplied_to.add(sender_handle)
 
+        elif msg.startswith("JOIN"):
+            parts = msg.split()
+            if len(parts) == 3:
+                join_handle = parts[1]
+                if join_handle != config.get("handle"):
+                    safe_print_from_thread(f"{YELLOW} {join_handle} ist dem Chat beigetreten.{RESET}")
+
 def handle_sigterm(signum, frame):
     config = get_config()
     handle = config.get("handle")
     whoisport = config.get("whoisport")
     send_leave(handle, whoisport)
-   #  print(f"{RED}[NETWORK] LEAVE-Nachricht gesendet. Beende...{RESET}")
     sys.exit(0)
 
 def run_network_process(known_users, config):
