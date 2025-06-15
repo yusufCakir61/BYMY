@@ -27,6 +27,15 @@ def run_discovery_process(whoisport):
                 ip = addr[0]
                 known_users[handle] = (ip, port)
 
+                # 🔁 Sende JOIN des Neuen an alle anderen bekannten Nutzer
+                for h, (ip_other, port_other) in known_users.items():
+                    if h != handle:
+                        try:
+                            join_msg = f"JOIN {handle} {port}"
+                            sock.sendto(join_msg.encode("utf-8"), (ip_other, port_other))
+                        except Exception:
+                            pass  # leise Fehler ignorieren
+
         elif msg.startswith("LEAVE"):
             parts = msg.split()
             if len(parts) == 2:
