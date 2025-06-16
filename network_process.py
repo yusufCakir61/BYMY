@@ -1,101 +1,113 @@
 ## @file network_process.py
-#  @brief Steuert die Netzwerkkommunikation des BYMY-Chatprogramms.
+#  @brief Verantwortlich für die Netzwerk-Kommunikation des Chat-Clients.
 #
-#  Dieses Modul übernimmt:
-#  - Empfang & Versand von Nachrichten und Bildern per UDP
-#  - Verwaltung bekannter Nutzer (JOIN, LEAVE)
-#  - Auto-Reply bei gesetztem Abwesenheits-Flag
-#  - Kommunikation mit dem CLI-Teil über Pipes
-#  - Signalbehandlung für sauberes Beenden
+#  Dieses Modul regelt den Nachrichtenaustausch, das Finden aktiver Nutzer (Discovery),
+#  das Versenden von Textnachrichten und Bildern (in Chunks) sowie die Synchronisation
+#  der bekannten Nutzerliste. Es arbeitet über UDP und Pipes zur CLI.
+#
+#  Globale Variablen:
+#  - PIPE_CLI_TO_NET: Pipe von CLI zu Netzwerkprozess.
+#  - PIPE_NET_TO_CLI: Pipe vom Netzwerkprozess zur CLI.
+#  - AWAY_FLAG: Datei, markiert Abwesenheit.
+#  - known_users: Dict aller bekannten Nutzer.
+#  - autoreplied_to: Speichert, wem bereits Autoreply geschickt wurde.
 
-import os               # Betriebssystem-Operationen (z.B. Pipes prüfen)
-import socket           # UDP-Sockets für Nachrichtenversand/-empfang
-import threading        # Threads, um gleichzeitig zu lauschen & CLI zu bedienen
-import signal           # Signal-Handling für sauberes Beenden
-import sys              # Systemfunktionen (z.B. sys.exit)
-from config_handler import get_config  # Eigene Funktion zum Laden der Config
+import os
+import socket
+import threading
+import signal
+import sys
+from config_handler import get_config
 
-# Farben für Terminal-Ausgabe (nur optisch, keine Funktion im Protokoll)
 RESET  = "\033[0m"
-BLUE   = "\033[94m"
-CYAN   = "\033[96m"
+BLUE = "\033[94m"
+CYAN = "\033[96m"
 YELLOW = "\033[93m"
-RED    = "\033[91m"
-GREEN  = "\033[92m"
+RED = "\033[91m"
+GREEN = "\033[92m"
 
-# Pipes & Status-Dateien
-PIPE_CLI_TO_NET = "cli_to_network.pipe"  ## @var PIPE_CLI_TO_NET Pfad: CLI sendet an Network
-PIPE_NET_TO_CLI = "network_to_cli.pipe"  ## @var PIPE_NET_TO_CLI Pfad: Network sendet an CLI
-AWAY_FLAG       = "away.flag"             ## @var AWAY_FLAG Datei signalisiert Abwesenheit
+PIPE_CLI_TO_NET = "cli_to_network.pipe"
+PIPE_NET_TO_CLI = "network_to_cli.pipe"
+AWAY_FLAG = "away.flag"
 
-# Laufzeitvariablen
-autoreplied_to = set()  ## @var autoreplied_to Speichert Nutzer, die schon Auto-Reply bekamen
-known_users    = {}     ## @var known_users Speichert bekannte Nutzer als Dict {handle: (ip, port)}
+autoreplied_to = set()
+known_users = {}
 
-
-## @brief Schreibt eine Nachricht in die Pipe von Network zu CLI.
-#  
-#  Öffnet die Pipe @ref PIPE_NET_TO_CLI im Schreibmodus und überträgt die Nachricht.
-#  So kann der CLI-Prozess diese lesen und anzeigen.
+## @brief Schreibt eine Nachricht in die Pipe zur CLI.
 #
-#  @param msg Die Nachricht, die geschrieben werden soll (String).
+# Ablauf:
+# (1) Öffnet die Pipe im Schreibmodus.
+# (2) Schreibt die Nachricht plus Zeilenumbruch.
+# (3) Fehler werden farbig ausgegeben.
+#
+# @param msg Nachricht an die CLI.
 def write_to_cli(msg):
     try:
         with open(PIPE_NET_TO_CLI, "w") as pipe:
-            # Nachricht plus Zeilenumbruch senden
             pipe.write(msg + "\n")
     except Exception as e:
-        # Fehlerausgabe in Rot
         print(f"{RED}Fehler beim Schreiben in CLI-Pipe: {e}{RESET}")
 
-
-        ## @brief Sendet eine WHO-Anfrage via UDP-Broadcast.
-#  
-#  Diese Anfrage fragt nach anderen aktiven Clients im Netzwerk.
+## @brief Sendet eine WHO-Anfrage, um aktive Nutzer zu finden.
 #
-#  @param whoisport Der Port, auf dem WHO-Anfragen gesendet werden.
+# Ablauf:
+# (1) Erstellt UDP-Socket.
+# (2) Aktiviert Broadcast.
+# (3) Sendet "WHO" an Broadcast-Adresse und WHOIS-Port.
+#
+# @param whoisport Zielport für Broadcast.
 def send_who(whoisport):
     msg = "WHO"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
 
-
-## @brief Sendet eine JOIN-Nachricht an alle im Netzwerk.
-#  
-#  Teilt den anderen Clients mit, dass dieser Client nun online ist.
+## @brief Meldet sich durch JOIN-Nachricht im Netzwerk an.
 #
-#  @param handle Eigenes Handle (Benutzername).
-#  @param port Port, auf dem dieser Client erreichbar ist.
-#  @param whoisport Port für WHO/JOIN-Broadcasts.
+# Ablauf:
+# (1) Baut JOIN-String mit Handle und Port.
+# (2) Erstellt UDP-Socket.
+# (3) Aktiviert Broadcast.
+# (4) Sendet JOIN an Broadcast-Adresse und WHOIS-Port.
+#
+# @param handle Eigenes Handle.
+# @param port Eigener Port.
+# @param whoisport WHOIS-Port.
 def send_join(handle, port, whoisport):
     msg = f"JOIN {handle} {port}"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
 
-
-## @brief Sendet eine LEAVE-Nachricht, um sich abzumelden.
+## @brief Meldet sich mit LEAVE-Nachricht ab.
 #
-#  Benachrichtigt andere Clients, dass dieser Client offline geht.
+# Ablauf:
+# (1) Baut LEAVE-String.
+# (2) Erstellt UDP-Socket.
+# (3) Aktiviert Broadcast.
+# (4) Sendet LEAVE an Broadcast-Adresse und WHOIS-Port.
 #
-#  @param handle Eigenes Handle.
-#  @param whoisport Port für WHO/LEAVE-Broadcasts.
+# @param handle Eigenes Handle.
+# @param whoisport WHOIS-Port.
 def send_leave(handle, whoisport):
     msg = f"LEAVE {handle}"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
 
-
-## @brief Sendet eine normale Chat-Nachricht an einen bekannten Nutzer.
+## @brief Sendet eine Textnachricht direkt an einen Nutzer.
 #
-#  Verwendet UDP-Direct Message, basierend auf der bekannten IP/Port-Kombination.
+# Ablauf:
+# (1) Holt IP & Port aus known_users.
+# (2) Formatiert MSG {Absender} {Text}.
+# (3) Erstellt UDP-Socket.
+# (4) Sendet Nachricht.
+# (5) Gibt Fehler, falls Empfänger unbekannt.
 #
-#  @param to_handle Handle des Empfängers.
-#  @param text Nachrichtentext.
-#  @param known_users Dictionary der bekannten Nutzer.
-#  @param my_handle Eigenes Handle.
+# @param to_handle Empfänger.
+# @param text Nachricht.
+# @param known_users Liste bekannter Nutzer.
+# @param my_handle Absender.
 def send_msg(to_handle, text, known_users, my_handle):
     if to_handle not in known_users:
         print(f"{RED}Empfänger {to_handle} nicht bekannt{RESET}")
@@ -105,18 +117,21 @@ def send_msg(to_handle, text, known_users, my_handle):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(msg.encode("utf-8"), (ip, port))
 
-
-        ## @brief Sendet eine Bilddatei in mehreren Chunks an einen bekannten Empfänger.
+## @brief Sendet eine Bilddatei in Chunks.
 #
-#  Das Bild wird in Blöcke geteilt und über UDP verschickt.
-#  Zuerst wird eine IMG_START-Nachricht gesendet, dann die Chunks,
-#  zum Schluss ein IMG_END.
+# Ablauf:
+# (1) Holt IP & Port des Empfängers.
+# (2) Berechnet Chunk-Anzahl.
+# (3) Sendet IMG_START.
+# (4) Sendet alle CHUNK-Pakete.
+# (5) Sendet IMG_END.
+# (6) Fehler werden angezeigt.
 #
-#  @param to_handle Empfänger-Handle.
-#  @param filepath Pfad zur Bilddatei.
-#  @param filesize Größe der Datei in Bytes.
-#  @param known_users Dictionary der bekannten Nutzer.
-#  @param config Aktuelle Konfiguration (Handle etc.).
+# @param to_handle Empfänger.
+# @param filepath Dateipfad.
+# @param filesize Dateigröße.
+# @param known_users Bekannte Nutzer.
+# @param config Client-Config.
 def send_image(to_handle, filepath, filesize, known_users, config):
     if to_handle not in known_users:
         print(f"{RED}Empfänger {to_handle} nicht bekannt{RESET}")
@@ -127,28 +142,34 @@ def send_image(to_handle, filepath, filesize, known_users, config):
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock, open(filepath, "rb") as f:
-            # Starte Übertragung
             start_msg = f"IMG_START {config['handle']} {os.path.basename(filepath)} {total_chunks}"
             sock.sendto(start_msg.encode(), (ip, port))
 
-            # Sende die Chunks nacheinander
             for i in range(total_chunks):
                 chunk_data = f.read(chunk_size)
                 chunk_msg = f"CHUNK {i}".encode() + b'||' + chunk_data
                 sock.sendto(chunk_msg, (ip, port))
 
-            # Beende Übertragung
             sock.sendto(b"IMG_END", (ip, port))
     except Exception as e:
         print(f"{RED}Fehler beim Bildversand: {e}{RESET}")
 
-
-## @brief Liest Kommandos aus der CLI-to-Network Pipe & führt sie aus.
+## @brief Liest CLI-Befehle und ruft passende Funktionen auf.
 #
-#  Unterstützt: SEND_MSG, SEND_IMAGE, WHO, JOIN, LEAVE.
-#  Arbeitet kontinuierlich im Hauptthread.
+# Unterstützt:
+# - SEND_MSG
+# - SEND_IMAGE
+# - WHO
+# - JOIN
+# - LEAVE
 #
-#  @param config Aktuelle Konfiguration.
+# Ablauf:
+# (1) Öffnet Pipe.
+# (2) Liest Zeilen.
+# (3) Parst Befehl + Argumente.
+# (4) Führt aus.
+#
+# @param config Konfiguration.
 def read_cli_pipe(config):
     while True:
         with open(PIPE_CLI_TO_NET, "r") as pipe:
@@ -158,12 +179,10 @@ def read_cli_pipe(config):
                     continue
                 cmd = parts[0]
 
-                # Nachricht senden
                 if cmd == "SEND_MSG" and len(parts) == 3:
                     to, msg = parts[1], parts[2]
                     send_msg(to, msg, known_users, config["handle"])
 
-                # Bild senden
                 elif cmd == "SEND_IMAGE" and len(parts) == 4:
                     to, filepath, filesize_str = parts[1], parts[2], parts[3] if len(parts) > 3 else '0'
                     try:
@@ -172,30 +191,30 @@ def read_cli_pipe(config):
                         filesize = 0
                     send_image(to, filepath, filesize, known_users, config)
 
-                # WHO anfragen
                 elif cmd == "WHO":
                     send_who(config["whoisport"])
 
-                # JOIN senden
                 elif cmd == "JOIN" and len(parts) == 3:
                     _, handle, port = parts
                     send_join(handle, int(port), config["whoisport"])
 
-                # LEAVE senden
                 elif cmd == "LEAVE" and len(parts) == 2:
                     send_leave(parts[1], config["whoisport"])
 
-                    ## @brief Lauscht auf eingehende UDP-Pakete und verarbeitet alle Typen.
+## @brief Lauscht auf UDP-Port und verarbeitet eingehende Pakete.
 #
-#  Unterstützt:
-#  - Empfang und Speichern von Bildern in Chunks
-#  - Steuerbefehle (KNOWNUSERS, MSG, JOIN, LEAVE)
+# Ablauf:
+# (1) Bindet Socket.
+# (2) Verarbeitet IMG_START, CHUNK, IMG_END.
+# (3) Speichert Bilddateien.
+# (4) Handhabt KNOWNUSERS, MSG, JOIN, LEAVE.
+# (5) Schreibt in CLI-Pipe.
 #
-#  @param port Lokaler UDP-Port zum Hören.
-#  @param config Laufzeit-Konfiguration.
+# @param port Lokaler UDP-Port.
+# @param config Konfiguration.
 def listen_on_port(port, config):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("", port))  # Bind an alle Interfaces
+    sock.bind(("", port))
     image_dir = config.get("imagepath", "receive/")
     os.makedirs(image_dir, exist_ok=True)
     incoming_images = {}
@@ -207,14 +226,12 @@ def listen_on_port(port, config):
             print(f"{RED}Socket Error: {e}{RESET}")
             break
 
-        # === Bildübertragung: Startsignal erkennen ===
         if data.startswith(b"IMG_START"):
             try:
                 parts = data.decode().strip().split(" ", 3)
                 if len(parts) == 4:
                     _, sender, filename, num_chunks_str = parts
                     num_chunks = int(num_chunks_str)
-                    # Neues Bild-Objekt vorbereiten
                     incoming_images[(addr, filename)] = {
                         "from": sender,
                         "filename": filename,
@@ -226,7 +243,6 @@ def listen_on_port(port, config):
                 print(f"{RED}Fehler bei IMG_START: {e}{RESET}")
             continue
 
-        # === Bildübertragung: Chunk empfangen ===
         elif data.startswith(b"CHUNK"):
             try:
                 header, chunk_data = data.split(b'||', 1)
@@ -241,7 +257,6 @@ def listen_on_port(port, config):
                 print(f"{RED}Fehler bei CHUNK: {e}{RESET}")
             continue
 
-        # === Bildübertragung: Ende verarbeiten ===
         elif data.startswith(b"IMG_END"):
             for key, info in list(incoming_images.items()):
                 if info["received"] == info["total"]:
@@ -253,10 +268,9 @@ def listen_on_port(port, config):
                         write_to_cli(f"IMG {info['from']} {info['filename']}")
                         del incoming_images[key]
                     except Exception as e:
-                        print(f"{RED}Fehler beim Speichern des Bildes: {e}{RESET}")
+                        print(f"{RED}Fehler beim Speichern: {e}{RESET}")
             continue
 
-        # === Alle sonstigen Befehle (KNOWNUSERS, MSG, JOIN, LEAVE) ===
         msg = data.decode("utf-8", errors="ignore").strip()
         parts = msg.split(" ", 2)
         if not parts:
@@ -264,7 +278,6 @@ def listen_on_port(port, config):
 
         cmd = parts[0]
 
-        ## KNOWNUSERS: Update lokale User-Liste
         if cmd == "KNOWNUSERS":
             entries = msg[len("KNOWNUSERS "):].split(", ")
             for entry in entries:
@@ -275,7 +288,6 @@ def listen_on_port(port, config):
             users_str = ", ".join(f"{h} {ip} {p}" for h, (ip, p) in known_users.items())
             write_to_cli(f"KNOWNUSERS {users_str}")
 
-        ## MSG: Textnachricht empfangen & ggf. Auto-Reply senden
         elif cmd == "MSG" and len(parts) == 3:
             sender = parts[1]
             text = parts[2]
@@ -289,7 +301,6 @@ def listen_on_port(port, config):
                 else:
                     write_to_cli(f"MSG {sender} {text}")
 
-        ## JOIN: Neuen Nutzer in known_users eintragen
         elif cmd == "JOIN" and len(parts) == 3:
             join_handle = parts[1]
             join_port = int(parts[2])
@@ -297,28 +308,28 @@ def listen_on_port(port, config):
                 known_users[join_handle] = (addr[0], join_port)
                 write_to_cli(f"JOIN {join_handle}")
 
-        ## LEAVE: Nutzer austragen
         elif cmd == "LEAVE" and len(parts) == 2:
             leave_handle = parts[1]
             if leave_handle in known_users:
                 del known_users[leave_handle]
             write_to_cli(f"LEAVE {leave_handle}")
 
-
-## @brief Behandelt SIGTERM oder SIGINT um sich sauber abzumelden.
-#  Sendet LEAVE und beendet das Programm.
+## @brief Behandelt SIGTERM/SIGINT: sendet LEAVE und beendet.
 #
-#  @param signum Signalnummer.
-#  @param frame Aktueller Stackframe.
+# @param signum Signalnummer.
+# @param frame Signal-Frame.
 def handle_sigterm(signum, frame):
     config = get_config()
     send_leave(config["handle"], config["whoisport"])
     sys.exit(0)
 
-
-## @brief Startpunkt des Netzwerkprozesses.
+## @brief Startet den Netzwerkprozess.
 #
-#  Bindet Signale, startet Listener & Pipe-Reader.
+# Ablauf:
+# (1) Lädt Config.
+# (2) Registriert Signal-Handler.
+# (3) Startet Listener-Thread.
+# (4) Startet CLI-Pipe-Leser.
 def start():
     config = get_config()
     signal.signal(signal.SIGTERM, handle_sigterm)
@@ -328,8 +339,13 @@ def start():
     threading.Thread(target=listen_on_port, args=(port, config), daemon=True).start()
     read_cli_pipe(config)
 
+## @brief Einstiegspunkt: Erstellt Pipes falls nötig und startet den Netzwerkprozess.
+#
+# Wenn die Datei direkt ausgeführt wird:
+# (1) Prüft, ob die Pipes existieren — erstellt sie ggf.
+# (2) Ruft start() auf, um alles zu initialisieren.
 
-# === Hauptprogramm ===
+
 if __name__ == "__main__":
     if not os.path.exists(PIPE_CLI_TO_NET):
         os.mkfifo(PIPE_CLI_TO_NET)
