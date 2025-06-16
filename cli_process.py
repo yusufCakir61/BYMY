@@ -87,7 +87,7 @@ def listen_pipe_loop():
                         _, sender = line.strip().split()
                         if sender in known_users:
                             known_users.pop(sender)
-                            print(f"{sender} hat den Chat verlassen.{RESET}")
+                           # print(f"{sender} hat den Chat verlassen.{RESET}")
                     elif line.startswith("IMG "):
                         _, sender, filename = line.strip().split()
                         print(f"{sender} hat ein Bild gesendet: {filename}")
