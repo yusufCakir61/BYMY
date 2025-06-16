@@ -1,11 +1,7 @@
 import socket
 from config_handler import get_config
 
-# Farbdefinitionen für CLI-Ausgaben
 RESET = "\033[0m"
-GREEN = "\033[92m"
-BLUE = "\033[94m"
-RED = "\033[91m"
 YELLOW = "\033[93m"
 
 def run_discovery_process(whoisport):
@@ -30,22 +26,34 @@ def run_discovery_process(whoisport):
                 port = int(parts[2])
                 ip = addr[0]
                 known_users[handle] = (ip, port)
-               # print(f"{GREEN}[DISCOVERY] JOIN von {handle} @ {ip}:{port}{RESET}")
+
+                # 🔁 Sende JOIN des Neuen an alle anderen bekannten Nutzer
+                for h, (ip_other, port_other) in known_users.items():
+                    if h != handle:
+                        try:
+                            join_msg = f"JOIN {handle} {port}"
+                            sock.sendto(join_msg.encode("utf-8"), (ip_other, port_other))
+                        except Exception:
+                            pass  # leise Fehler ignorieren
+
+        elif msg.startswith("LEAVE"):
+            parts = msg.split()
+            if len(parts) == 2:
+                handle = parts[1]
+                known_users.pop(handle, None)
 
         elif msg == "WHO":
             sender_ip = addr[0]
             sender_port = None
-
-            for h, (ip, port) in known_users.items():
+            for h, (ip, p) in known_users.items():
                 if ip == sender_ip:
-                    sender_port = port
+                    sender_port = p
                     break
 
             if sender_port:
                 user_list = ", ".join(f"{h} {ip} {p}" for h, (ip, p) in known_users.items())
                 response = f"KNOWNUSERS {user_list}"
                 sock.sendto(response.encode("utf-8"), (sender_ip, sender_port))
-               # print(f"{BLUE}[DISCOVERY] KNOWNUSERS gesendet an {sender_ip}:{sender_port}{RESET}")
 
 if __name__ == "__main__":
     config = get_config()
