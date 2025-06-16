@@ -1,4 +1,20 @@
-#!/usr/bin/env python3
+##
+# @file cli_process.py
+# @brief Command Line Interface (CLI) für BYMY-CHAT
+#
+# @details
+# Dieses Modul steuert den gesamten Terminal-Chat:
+# 
+# 👉 **GESAMTABLAUF:**
+# 1️⃣  Lade und sichere Konfigurationsdatei (TOML)
+# 2️⃣  Initialisiere Pipes für IPC zwischen CLI und Netzwerkprozess
+# 3️⃣  Starte separaten Listener-Thread für eingehende Nachrichten
+# 4️⃣  Starte den Haupt-CLI-Loop für Benutzerinteraktion
+# 5️⃣  Verarbeite Steuerbefehle: WHO, ONLINE, OFFLINE, AUTOREPLY, NAME, HILFE, EXIT
+# 6️⃣  Unterstütze Bildsuche und Bildversand per Befehl
+# 7️⃣  Schließe Chat bei EXIT sauber inkl. LEAVE-Nachricht & Stop-Skript
+#
+
 import os, time, sys, toml, subprocess, threading
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -13,10 +29,19 @@ PIPE_CLI_TO_NET  = "cli_to_network.pipe"
 PIPE_NET_TO_CLI  = "network_to_cli.pipe"
 offline_txt      = os.path.join("receive", "offline_messages.txt")
 
-known_users = {}
-current_chat = None
-received_leave_ack = threading.Event()
+known_users = {}              
+current_chat = None           
+received_leave_ack = threading.Event()   
 
+##
+# @brief Ändert einen Wert in der Konfigurationsdatei.
+# @details 
+# Ablauf:
+# 1️⃣  Lade bestehende TOML
+# 2️⃣  Ändere Schlüsselwert
+# 3️⃣  Speichere wieder als TOML
+# 4️⃣  Melde Erfolg oder Fehler
+#
 def update_config_value(key, value):
     try:
         config = toml.load(CONFIG_FILE)
@@ -27,6 +52,11 @@ def update_config_value(key, value):
     except Exception as e:
         print(f"{RED}❌ Fehler beim Ändern von {key}: {e}{RESET}")
 
+##
+# @brief Zeigt das CLI-Intro mit allen Befehlen.
+# @details 
+# 1️⃣  Nutzt Farben & Symbole 
+# 2️⃣  Listet alle gültigen Chat-Kommandos übersichtlich auf
 def show_intro():
     print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}\n")
     print(f"""Verfügbare Befehle:{RESET}
@@ -39,6 +69,14 @@ def show_intro():
   {YELLOW}hilfe{RESET}              – Diese Hilfe erneut anzeigen
   {YELLOW}exit{RESET}               – Beenden\n""")
 
+##
+# @brief Repariert eine Pipe-Datei.
+# @details
+# Ablauf:
+# 1️⃣  Prüfe ob Pipe existiert
+# 2️⃣  Lösche alte Pipe falls nötig
+# 3️⃣  Erstelle neue Pipe
+# 4️⃣  Gib Statusmeldung aus
 def recover_pipe(pipe_name):
     try:
         if os.path.exists(pipe_name):
@@ -48,17 +86,36 @@ def recover_pipe(pipe_name):
     except Exception as e:
         print(f"{RED}❌ Fehler beim Wiederherstellen der Pipe {pipe_name}: {e}{RESET}")
 
+##
+# @brief Schreibt ein Befehlskommando in die Netzwerk-Pipe.
+# @details
+# Ablauf:
+# 1️⃣  Öffne CLI->Network Pipe im Schreibmodus
+# 2️⃣  Schreibe Kommando
+# 3️⃣  Bei Fehler: Pipe reparieren
 def send_pipe_command(cmd):
     try:
         with open(PIPE_CLI_TO_NET, "w") as f:
             f.write(cmd + "\n")
     except BrokenPipeError:
-        print(f"{RED}❌ Netzwerkprozess ist nicht aktiv – Befehl nicht gesendet: {cmd}{RESET}")
+        print(f"{RED}❌ Netzwerkprozess nicht aktiv: {cmd}{RESET}")
         recover_pipe(PIPE_CLI_TO_NET)
     except Exception as e:
-        print(f"{RED}❌ Fehler beim Senden über Pipe: {e}{RESET}")
+        print(f"{RED}❌ Fehler beim Pipe-Senden: {e}{RESET}")
         recover_pipe(PIPE_CLI_TO_NET)
 
+##
+# @brief Thread-Loop: Lauscht auf Nachrichten von Netzwerkprozess.
+# @details 
+# Ablauf:
+# 1️⃣  Öffne Pipe NETWORK->CLI
+# 2️⃣  Verarbeite Nachrichtentypen:
+#     - KNOWNUSERS: aktualisiere Liste
+#     - MSG: zeige oder speichere bei Away
+#     - JOIN/LEAVE: passe Userliste an
+#     - IMG: Info über erhaltenes Bild
+#     - LEAVE_ACK: Setze Leave-Bestätigung
+# 3️⃣  Bei Fehler: Pipe ggf. reparieren
 def listen_pipe_loop():
     global known_users
     while True:
@@ -85,20 +142,22 @@ def listen_pipe_loop():
                         print(f"{sender} ist dem Chat beigetreten.")
                     elif line.startswith("LEAVE "):
                         _, sender = line.strip().split()
-                        if sender in known_users:
-                            known_users.pop(sender)
-                           # print(f"{sender} hat den Chat verlassen.{RESET}")
+                        known_users.pop(sender, None)
                     elif line.startswith("IMG "):
                         _, sender, filename = line.strip().split()
                         print(f"{sender} hat ein Bild gesendet: {filename}")
                     elif line.startswith("LEAVE_ACK "):
                         received_leave_ack.set()
         except Exception as e:
-            print(f"{RED}❌ Fehler beim Lesen aus Pipe: {e}{RESET}")
+            print(f"{RED}❌ Fehler beim Pipe-Listening: {e}{RESET}")
             time.sleep(1)
             if not os.path.exists(PIPE_NET_TO_CLI):
                 recover_pipe(PIPE_NET_TO_CLI)
 
+##
+# @brief Sucht nach einer Datei im Home-Verzeichnis.
+# @param name Anfang des Dateinamens.
+# @return Pfad oder None.
 def find_file(name):
     for root, _, files in os.walk(os.path.expanduser("~")):
         for f in files:
@@ -106,6 +165,21 @@ def find_file(name):
                 return os.path.join(root, f)
     return None
 
+##
+# @brief Haupt-CLI-Loop.
+# @details 
+# 👉 **Ablauf:**
+# 1️⃣  Hole Konfig & Autoreply
+# 2️⃣  Führe JOIN aus
+# 3️⃣  Starte Nutzereingabe-Loop:
+#     - WHO: Aktive Nutzer abrufen
+#     - ONLINE/OFFLINE: Status ändern
+#     - /AUTOREPLY: Autoreply neu setzen
+#     - /NAME: Chatpartner wechseln
+#     - HILFE: Intro anzeigen
+#     - EXIT: LEAVE senden & Skript stoppen
+# 4️⃣  Starte Chat: Nachrichten & Bildversand
+# 5️⃣  Wiederhole bis exit
 def run_cli():
     global current_chat
     config = get_config()
@@ -119,137 +193,10 @@ def run_cli():
     session = PromptSession()
     current_chat = input(f"{MAG}➔ Gebe zuerst 'who' ein um zu starten! {RESET}")
 
-    while True:
-        if current_chat.lower() == "exit":
-            send_pipe_command(f"LEAVE {own_handle}")
-            if not received_leave_ack.wait(timeout=2):
-                print(f"{YELLOW}⚠ Keine Bestätigung für LEAVE erhalten.{RESET}")
-            for h in known_users:
-                if h != own_handle:
-                    send_pipe_command(f"SEND_MSG {h} hat den Chat verlassen.")
-            time.sleep(0.2)
-            print(f"{RED}Chat wird beendet... Bis bald{RESET}")
-            stop_script = os.path.join(os.path.dirname(__file__), "stop_all.sh")
-            if os.path.exists(stop_script) and os.access(stop_script, os.X_OK):
-                try:
-                    subprocess.run(["bash", stop_script])
-                except Exception as e:
-                    print(f"{RED}❌ Fehler beim Ausführen von stop_all.sh: {e}{RESET}")
-            else:
-                print(f"{YELLOW}⚠ stop_all.sh nicht gefunden oder nicht ausführbar.{RESET}")
-            break
+   
 
-        elif current_chat.lower() == "who":
-            send_pipe_command("WHO")
-            time.sleep(1)
-            if known_users:
-                print(f"{BOLD}{RED}🌐 Aktive Nutzer:{RESET}")
-                [print(f"  • {h}") for h in known_users]
-            else:
-                print(f"{RED}❌ Keine Nutzer gefunden.{RESET}")
-            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
-            continue
-
-        elif current_chat.lower() == "offline":
-            if not config.get("away", False):
-                config["away"] = True
-                open(AWAY_FLAG, "w").close()
-                print(f"{RED}Abwesenheitsmodus aktiviert.{RESET}")
-                auto = config["autoreply"]
-                for h in known_users:
-                    if h != own_handle:
-                        send_pipe_command(f"SEND_MSG {h} {auto}")
-            else:
-                print(f"{YELLOW}Bereits im Abwesenheitsmodus.{RESET}")
-            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
-            continue
-
-        elif current_chat.lower() == "online":
-            if config.get("away", False):
-                config["away"] = False
-                if os.path.exists(AWAY_FLAG):
-                    os.remove(AWAY_FLAG)
-                print(f"{GREEN}Du bist wieder online.{RESET}")
-                for h in known_users:
-                    if h != own_handle:
-                        send_pipe_command(f"SEND_MSG {h} Ich bin wieder da.")
-                if os.path.exists(offline_txt):
-                    print(f"{BOLD}{RED} Verpasste Nachrichten:{RESET}")
-                    [print(f" {l.strip()}") for l in open(offline_txt, encoding="utf-8")]
-                    os.remove(offline_txt)
-                else:
-                    print(f"{CYAN}Keine verpassten Nachrichten.{RESET}")
-            else:
-                print(f"{YELLOW}Du warst nicht offline.{RESET}")
-            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
-            continue
-
-        elif current_chat.lower() == "hilfe":
-            show_intro()
-            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
-            continue
-
-        elif current_chat.startswith("/autoreply "):
-            new_reply = current_chat[len("/autoreply "):].strip()
-            update_config_value("autoreply", new_reply)
-            config["autoreply"] = new_reply
-            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
-            continue
-
-        elif current_chat.startswith("/name"):
-            new_chat = current_chat[len("/name"):].strip()
-            if new_chat in known_users:
-                print(f"{CYAN}↪ Wechsel zu {new_chat}{RESET}")
-                current_chat = new_chat
-            else:
-                print(f"{RED}⚠ Nutzer '{new_chat}' nicht bekannt.{RESET}")
-                current_chat = input(f"{MAG}➔ Chatpartner: {RESET}")
-            continue
-
-        elif current_chat.startswith("/"):
-            print(f"{YELLOW}⚠ Unbekannter Befehl: {current_chat}{RESET}")
-            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
-            continue
-
-        elif current_chat not in known_users:
-            print(f"{RED}⚠ Nutzer '{current_chat}' nicht bekannt.{RESET}")
-            current_chat = input(f"{MAG}➔ Chatpartner: {RESET}")
-            continue
-
-        print(f"{CYAN}💬 Chat mit {current_chat} gestartet.{RESET}")
-        while True:
-            try:
-                with patch_stdout():
-                    msg = session.prompt("> ")
-            except (EOFError, KeyboardInterrupt):
-                print(f"\n{RED} Chat beendet.{RESET}")
-                return
-
-            if msg.lower() == "exit":
-                current_chat = "exit"
-                break
-            if msg.lower() in ["who", "online", "offline", "hilfe"] or msg.startswith("/"):
-                current_chat = msg
-                break
-
-            sys.stdout.write("\033[F\033[K")
-            sys.stdout.flush()
-
-            if msg.startswith("send "):
-                name = msg.split(" ", 1)[1].strip()
-                path = find_file(name)
-                if not path:
-                    print(f"{RED}❌ Bild nicht gefunden: {name}{RESET}")
-                    continue
-                with open(path, "rb") as f:
-                    data = f.read()
-                send_pipe_command(f"SEND_IMAGE {current_chat} {path} {len(data)}")
-                print(f"{'':>40}{GREEN}Du: [Bild gesendet: {os.path.basename(path)}]{RESET}")
-                continue
-
-            send_pipe_command(f"SEND_MSG {current_chat} {msg}")
-            print(f"{'':>40}{GREEN}Du: {msg}{RESET}")
-
+##
+# @brief Einstiegspunkt: Erstellt Pipes & startet CLI + Listener.
 if __name__ == "__main__":
     if not os.path.exists(PIPE_CLI_TO_NET): os.mkfifo(PIPE_CLI_TO_NET)
     if not os.path.exists(PIPE_NET_TO_CLI): os.mkfifo(PIPE_NET_TO_CLI)
