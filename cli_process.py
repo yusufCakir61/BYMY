@@ -3,16 +3,25 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from config_handler import get_config
 
+## @brief ANSI-Farb-Codes zur Konsolenausgabe
+
 RESET = "\033[0m"; GREEN = "\033[92m"; RED = "\033[91m"
 CYAN = "\033[96m"; YELLOW = "\033[93m"; MAG = "\033[95m"; BOLD = "\033[1m"
 
-AWAY_FLAG = "away.flag"
+
+AWAY_FLAG = "away.flag" 
 CONFIG_FILE = "config.toml"
 PIPE_CLI_TO_NET = "cli_to_network.pipe"
 PIPE_NET_TO_CLI = "network_to_cli.pipe"
 offline_txt = os.path.join("receive", "offline_messages.txt")
 known_users = {}
 current_chat = None
+
+"""
+@brief Aktualisiert einnen Konfiguartionswert in der config.toml-Datei.
+@param key Der Konfigurationssschlüssel, der geändert werden soll.
+@param value neue Wert für den Schlüssel.
+"""
 
 def update_config_value(key, value):
     try:
@@ -23,6 +32,10 @@ def update_config_value(key, value):
         print(f"{GREEN}✓ {key} erfolgreich geändert auf: {value}{RESET}")
     except Exception as e:
         print(f"{RED}❌ Fehler beim Ändern von {key}: {e}{RESET}")
+
+"""
+@brief Zeigt das Hilfe Menü mit allem verfügbaren Befehlen Im Terminal an.
+"""
 
 def show_intro():
     print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}\n")
@@ -36,6 +49,13 @@ def show_intro():
   {RED}hilfe{RESET}              – Diese Hilfe erneut anzeigen
   {RED}exit{RESET}               – Beenden\n""")
 
+"""
+@brief Erstellt eine Named Pipe neu, falls sie fehlt oder beschädigt ist 
+
+@param pipe_name Der Pfad zur Pipe-Datei
+
+"""
+
 def recover_pipe(pipe_name):
     try:
         if os.path.exists(pipe_name):
@@ -44,6 +64,11 @@ def recover_pipe(pipe_name):
         print(f"{YELLOW}⚠ Pipe {pipe_name} wurde neu erstellt.{RESET}")
     except Exception as e:
         print(f"{RED}❌ Fehler beim Wiederherstellen der Pipe {pipe_name}: {e}{RESET}")
+
+"""
+@brief Sendet einen Befehl über die CLI-zu-Netzwerk-Pipe.
+@param cmd Der Befehl, der gesendet werden soll(als String).
+"""
 
 def send_pipe_command(cmd):
     try:
@@ -55,6 +80,12 @@ def send_pipe_command(cmd):
     except Exception as e:
         print(f"{RED}❌ Fehler beim Senden über Pipe: {e}{RESET}")
         recover_pipe(PIPE_CLI_TO_NET)
+
+"""
+@brief Lauscht kontinuierlich afu eingehende Nachrichten aus der Netwerkprozess-Pipe.
+Erkennt und verabbeitet Join,MSG,IMG, KNOWUSERS usw.
+"""
+
 
 def listen_pipe_loop():
     global known_users
@@ -95,12 +126,24 @@ def listen_pipe_loop():
             if not os.path.exists(PIPE_NET_TO_CLI):
                 recover_pipe(PIPE_NET_TO_CLI)
 
+"""
+@brief Sucht rekursiv im Home-Verzeichnus nach einer Datei, die Mit einem besttimten Namen beginnt.
+@param name Der Anfang des gesuchten Dateinames.
+@return Der vollständige Pfad zur gefunden Datei oder None, falls nicht gefunden.
+"""
+
 def find_file(name):
     for root, _, files in os.walk(os.path.expanduser("~")):
         for f in files:
             if f.lower().startswith(name.lower()):
                 return os.path.join(root, f)
     return None
+
+"""
+@breif Startet die Benutzeroberfäche des Chats und verabeitet Benutzereingaben
+Führt JOIN aus, akzeptiert Befehle wie WHO, ONLINE, OFFLINE, und verabeitet Nachricten
+"""
+
 
 def run_cli():
     global current_chat
@@ -241,6 +284,10 @@ def run_cli():
 
             send_pipe_command(f"SEND_MSG {current_chat} {msg}")
             print(f"{'':>40}{GREEN}Du: {msg}{RESET}")
+
+"""
+@brief Einstiegspunkt des CLI-Prozesses.Intialiasiert Pipes, startet Listener-Thread und öffnet das CLI.
+"""
 
 if __name__ == "__main__":
     if not os.path.exists(PIPE_CLI_TO_NET): os.mkfifo(PIPE_CLI_TO_NET)
