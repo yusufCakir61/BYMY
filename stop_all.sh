@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "⏹ Beende BYMY-Prozesse..."
+
 
 # Alle laufenden Prozesse beenden (CLI, Netzwerk, Discovery)
 pkill -f cli_process.py
@@ -15,4 +15,4 @@ rm -f network_to_cli.pipe
 rm -f away.flag
 rm -f receive/offline_messages.txt
 
-echo "✅ Alles gestoppt."
+

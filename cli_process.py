@@ -1,325 +1,258 @@
-## @file network_process.py
-## @brief Steuert die Netzwerk-Kommunikation des Chat-Clients.
-##
-## @details Dieses Modul übernimmt:
-## - Empfangen und Senden von Nachrichten & Bildern per UDP
-## - WHO/JOIN/LEAVE-Broadcast
-## - Auto-Reply bei Abwesenheit
-## - Kommunikation mit der CLI über Pipes
-## - Signal-Handler für sauberes Beenden
-
-
-import os
-import socket
-import threading
-import signal
-import sys
+#!/usr/bin/env python3
+import os, time, sys, toml, subprocess, threading
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 from config_handler import get_config
 
-## @brief ANSI-Farbdefinitionen für farbige Konsolenausgabe
-RESET  = "\033[0m"
-BLUE = "\033[94m"
-CYAN = "\033[96m"
-YELLOW = "\033[93m"
-RED = "\033[91m"
-GREEN = "\033[92m"
+RESET = "\033[0m"; GREEN = "\033[92m"; RED = "\033[91m"
+CYAN = "\033[96m"; YELLOW = "\033[93m"; MAG = "\033[95m"; BOLD = "\033[1m"
 
-## @brief Pfade und Flags
-PIPE_CLI_TO_NET = "cli_to_network.pipe"
-PIPE_NET_TO_CLI = "network_to_cli.pipe"
-AWAY_FLAG = "away.flag"
+AWAY_FLAG        = "away.flag"
+CONFIG_FILE      = "config.toml"
+PIPE_CLI_TO_NET  = "cli_to_network.pipe"
+PIPE_NET_TO_CLI  = "network_to_cli.pipe"
+offline_txt      = os.path.join("receive", "offline_messages.txt")
 
-## @brief Liste für Auto-Replies & bekannte User
-autoreplied_to = set()
 known_users = {}
+current_chat = None
+received_leave_ack = threading.Event()
 
-
-## @brief Schreibt Nachricht in die Pipe von Network -> CLI.
-## @details Ablauf:
-## 1) Öffnet Pipe im Schreibmodus.
-## 2) Schreibt Nachricht plus Zeilenumbruch.
-## 3) Fehler wird gefangen und ausgegeben.
-## @param msg Die Nachricht.
-def write_to_cli(msg):
+def update_config_value(key, value):
     try:
-        with open(PIPE_NET_TO_CLI, "w") as pipe:
-            pipe.write(msg + "\n")
+        config = toml.load(CONFIG_FILE)
+        config[key] = value
+        with open(CONFIG_FILE, "w") as f:
+            toml.dump(config, f)
+        print(f"{GREEN}✓ {key} erfolgreich geändert auf: {value}{RESET}")
     except Exception as e:
-        print(f"{RED}Fehler beim Schreiben in CLI-Pipe: {e}{RESET}")
+        print(f"{RED}❌ Fehler beim Ändern von {key}: {e}{RESET}")
 
+def show_intro():
+    print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}\n")
+    print(f"""Verfügbare Befehle:{RESET}
+  {YELLOW}who{RESET}                – Aktive Nutzer anzeigen
+  {YELLOW}online{RESET}             – Du bist wieder da
+  {YELLOW}offline{RESET}            – Abwesenheitsmodus aktivieren + Autoreply
+  {YELLOW}send <bild>{RESET}        – Bild senden (Dateiname reicht)
+  {YELLOW}/autoreply <text>{RESET}  – Autoreply-Nachricht ändern
+  {YELLOW}/name <nutzer>{RESET}     – Chatpartner wechseln
+  {YELLOW}hilfe{RESET}              – Diese Hilfe erneut anzeigen
+  {YELLOW}exit{RESET}               – Beenden\n""")
 
-## @brief Sendet WHO-Request via UDP-Broadcast.
-## @details Ablauf:
-## 1) Erstellt UDP-Socket.
-## 2) Setzt Broadcast-Option.
-## 3) Sendet 'WHO'-Nachricht an Broadcast-Adresse.
-## @param whoisport Ziel-Port.
-def send_who(whoisport):
-    msg = "WHO"
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
-
-
-## @brief Sendet JOIN-Message an Broadcast.
-## @details Ablauf:
-## 1) Baut JOIN-String zusammen.
-## 2) Erstellt UDP-Socket mit Broadcast.
-## 3) Schickt JOIN an alle.
-## @param handle Eigener Username.
-## @param port Eigener UDP-Port.
-## @param whoisport Ziel-Port für Broadcast.
-def send_join(handle, port, whoisport):
-    msg = f"JOIN {handle} {port}"
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
-
-
-## @brief Sendet LEAVE-Message per Broadcast.
-## @details Ablauf:
-## 1) Baut LEAVE-String.
-## 2) Erstellt UDP-Socket mit Broadcast.
-## 3) Schickt LEAVE an alle.
-## @param handle Eigener Username.
-## @param whoisport Ziel-Port für Broadcast.
-def send_leave(handle, whoisport):
-    msg = f"LEAVE {handle}"
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
-
-
-## @brief Sendet Chat-Nachricht direkt an einen User.
-## @details Ablauf:
-## 1) Prüft, ob Empfänger bekannt.
-## 2) Baut 'MSG'-String.
-## 3) Sendet direkt per UDP.
-## @param to_handle Empfänger.
-## @param text Nachrichtentext.
-## @param known_users Bekannte User.
-## @param my_handle Eigener Handle.
-def send_msg(to_handle, text, known_users, my_handle):
-    if to_handle not in known_users:
-        print(f"{RED}Empfänger {to_handle} nicht bekannt{RESET}")
-        return
-    ip, port = known_users[to_handle]
-    msg = f"MSG {my_handle} {text}"
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.sendto(msg.encode("utf-8"), (ip, port))
-
-
-## @brief Sendet Bild-Datei in Chunks.
-## @details Ablauf:
-## 1) Prüft Empfänger.
-## 2) Öffnet Bild & teilt es in Blöcke.
-## 3) Sendet Start-Message, alle Blöcke, dann End-Message.
-## @param to_handle Empfänger.
-## @param filepath Bildpfad.
-## @param filesize Dateigröße in Bytes.
-## @param known_users Bekannte User.
-## @param config Config mit eigenem Handle.
-def send_image(to_handle, filepath, filesize, known_users, config):
-    if to_handle not in known_users:
-        print(f"{RED}Empfänger {to_handle} nicht bekannt{RESET}")
-        return
-    ip, port = known_users[to_handle]
-    chunk_size = 1024
-    total_chunks = (filesize + chunk_size - 1) // chunk_size
-
+def recover_pipe(pipe_name):
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock, open(filepath, "rb") as f:
-            start_msg = f"IMG_START {config['handle']} {os.path.basename(filepath)} {total_chunks}"
-            sock.sendto(start_msg.encode(), (ip, port))
-
-            for i in range(total_chunks):
-                chunk_data = f.read(chunk_size)
-                chunk_msg = f"CHUNK {i}".encode() + b'||' + chunk_data
-                sock.sendto(chunk_msg, (ip, port))
-
-            sock.sendto(b"IMG_END", (ip, port))
+        if os.path.exists(pipe_name):
+            os.remove(pipe_name)
+        os.mkfifo(pipe_name)
+        print(f"{YELLOW}⚠ Pipe {pipe_name} wurde neu erstellt.{RESET}")
     except Exception as e:
-        print(f"{RED}Fehler beim Bildversand: {e}{RESET}")
+        print(f"{RED}❌ Fehler beim Wiederherstellen der Pipe {pipe_name}: {e}{RESET}")
 
+def send_pipe_command(cmd):
+    try:
+        with open(PIPE_CLI_TO_NET, "w") as f:
+            f.write(cmd + "\n")
+    except BrokenPipeError:
+        print(f"{RED}❌ Netzwerkprozess ist nicht aktiv – Befehl nicht gesendet: {cmd}{RESET}")
+        recover_pipe(PIPE_CLI_TO_NET)
+    except Exception as e:
+        print(f"{RED}❌ Fehler beim Senden über Pipe: {e}{RESET}")
+        recover_pipe(PIPE_CLI_TO_NET)
 
-## @brief Liest CLI-Befehle aus Pipe und führt aus.
-## @details Ablauf:
-## 1) Liest Pipe-Zeile für Zeile.
-## 2) Unterscheidet nach SEND_MSG, SEND_IMAGE, WHO, JOIN, LEAVE.
-## 3) Führt passenden Netzwerk-Call aus.
-## @param config Aktuelle Konfiguration.
-def read_cli_pipe(config):
-    while True:
-        with open(PIPE_CLI_TO_NET, "r") as pipe:
-            for line in pipe:
-                parts = line.strip().split(" ", 2)
-                if not parts:
-                    continue
-                cmd = parts[0]
-
-                if cmd == "SEND_MSG" and len(parts) == 3:
-                    to, msg = parts[1], parts[2]
-                    send_msg(to, msg, known_users, config["handle"])
-
-                elif cmd == "SEND_IMAGE" and len(parts) == 4:
-                    to, filepath, filesize_str = parts[1], parts[2], parts[3]
-                    try:
-                        filesize = int(filesize_str)
-                    except:
-                        filesize = 0
-                    send_image(to, filepath, filesize, known_users, config)
-
-                elif cmd == "WHO":
-                    send_who(config["whoisport"])
-
-                elif cmd == "JOIN" and len(parts) == 3:
-                    _, handle, port = parts
-                    send_join(handle, int(port), config["whoisport"])
-
-                elif cmd == "LEAVE" and len(parts) == 2:
-                    send_leave(parts[1], config["whoisport"])
-
-
-## @brief Hört auf UDP-Port & verarbeitet eingehende Daten.
-## @details Ablauf:
-## 1) Bindet Socket.
-## 2) Endlosschleife:
-##    - Erkennt IMG_START, CHUNK, IMG_END
-##    - Erkennt WHO, JOIN, LEAVE, MSG
-##    - Aktualisiert known_users & sendet AutoReply bei Abwesenheit.
-## @param port Port zum Lauschen.
-## @param config Konfiguration.
-def listen_on_port(port, config):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("", port))
-    image_dir = config.get("imagepath", "receive/")
-    os.makedirs(image_dir, exist_ok=True)
-    incoming_images = {}
-
+def listen_pipe_loop():
+    global known_users
     while True:
         try:
-            data, addr = sock.recvfrom(65535)
-        except OSError as e:
-            print(f"{RED}Socket Error: {e}{RESET}")
+            with open(PIPE_NET_TO_CLI, "r") as pipe:
+                for line in pipe:
+                    if line.startswith("KNOWNUSERS "):
+                        known_users = {}
+                        parts = line.strip().partition(" ")[2].split(", ")
+                        for p in parts:
+                            handle, ip, port = p.split()
+                            known_users[handle] = (ip, int(port))
+                    elif line.startswith("MSG "):
+                        parts = line.strip().split(" ", 2)
+                        if len(parts) == 3:
+                            _, sender, msg = parts
+                            if os.path.exists(AWAY_FLAG):
+                                with open(offline_txt, "a", encoding="utf-8") as f:
+                                    f.write(f"{sender}: {msg}\n")
+                            else:
+                                print(f"\n{sender}: {msg}")
+                    elif line.startswith("JOIN "):
+                        _, sender = line.strip().split()
+                        print(f"{sender} ist dem Chat beigetreten.")
+                    elif line.startswith("LEAVE "):
+                        _, sender = line.strip().split()
+                        if sender in known_users:
+                            known_users.pop(sender)
+                            print(f"{sender} hat den Chat verlassen.{RESET}")
+                    elif line.startswith("IMG "):
+                        _, sender, filename = line.strip().split()
+                        print(f"{sender} hat ein Bild gesendet: {filename}")
+                    elif line.startswith("LEAVE_ACK "):
+                        received_leave_ack.set()
+        except Exception as e:
+            print(f"{RED}❌ Fehler beim Lesen aus Pipe: {e}{RESET}")
+            time.sleep(1)
+            if not os.path.exists(PIPE_NET_TO_CLI):
+                recover_pipe(PIPE_NET_TO_CLI)
+
+def find_file(name):
+    for root, _, files in os.walk(os.path.expanduser("~")):
+        for f in files:
+            if f.lower().startswith(name.lower()):
+                return os.path.join(root, f)
+    return None
+
+def run_cli():
+    global current_chat
+    config = get_config()
+    config.setdefault("autoreply", "Bin gerade offline.")
+    own_handle = config.get("handle", "Ich")
+    raw_port   = config.get("port")
+    port       = raw_port[0] if isinstance(raw_port, list) else int(raw_port)
+
+    send_pipe_command(f"JOIN {own_handle} {port}")
+    show_intro()
+    session = PromptSession()
+    current_chat = input(f"{MAG}➔ Gebe zuerst 'who' ein um zu starten! {RESET}")
+
+    while True:
+        if current_chat.lower() == "exit":
+            send_pipe_command(f"LEAVE {own_handle}")
+            if not received_leave_ack.wait(timeout=2):
+                print(f"{YELLOW}⚠ Keine Bestätigung für LEAVE erhalten.{RESET}")
+            for h in known_users:
+                if h != own_handle:
+                    send_pipe_command(f"SEND_MSG {h} hat den Chat verlassen.")
+            time.sleep(0.2)
+            print(f"{RED}Chat wird beendet... Bis bald{RESET}")
+            stop_script = os.path.join(os.path.dirname(__file__), "stop_all.sh")
+            if os.path.exists(stop_script) and os.access(stop_script, os.X_OK):
+                try:
+                    subprocess.run(["bash", stop_script])
+                except Exception as e:
+                    print(f"{RED}❌ Fehler beim Ausführen von stop_all.sh: {e}{RESET}")
+            else:
+                print(f"{YELLOW}⚠ stop_all.sh nicht gefunden oder nicht ausführbar.{RESET}")
             break
 
-        if data.startswith(b"IMG_START"):
-            try:
-                parts = data.decode().strip().split(" ", 3)
-                if len(parts) == 4:
-                    _, sender, filename, num_chunks_str = parts
-                    num_chunks = int(num_chunks_str)
-                    incoming_images[(addr, filename)] = {
-                        "from": sender, "filename": filename,
-                        "total": num_chunks, "received": 0, "chunks": {}
-                    }
-            except Exception as e:
-                print(f"{RED}Fehler bei IMG_START: {e}{RESET}")
+        elif current_chat.lower() == "who":
+            send_pipe_command("WHO")
+            time.sleep(1)
+            if known_users:
+                print(f"{BOLD}{RED}🌐 Aktive Nutzer:{RESET}")
+                [print(f"  • {h}") for h in known_users]
+            else:
+                print(f"{RED}❌ Keine Nutzer gefunden.{RESET}")
+            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
             continue
 
-        elif data.startswith(b"CHUNK"):
-            try:
-                header, chunk_data = data.split(b'||', 1)
-                _, chunk_num_str = header.decode().split()
-                chunk_num = int(chunk_num_str)
-                for key in incoming_images:
-                    if key[0] == addr:
-                        incoming_images[key]["chunks"][chunk_num] = chunk_data
-                        incoming_images[key]["received"] += 1
-                        break
-            except Exception as e:
-                print(f"{RED}Fehler bei CHUNK: {e}{RESET}")
+        elif current_chat.lower() == "offline":
+            if not config.get("away", False):
+                config["away"] = True
+                open(AWAY_FLAG, "w").close()
+                print(f"{RED}Abwesenheitsmodus aktiviert.{RESET}")
+                auto = config["autoreply"]
+                for h in known_users:
+                    if h != own_handle:
+                        send_pipe_command(f"SEND_MSG {h} {auto}")
+            else:
+                print(f"{YELLOW}Bereits im Abwesenheitsmodus.{RESET}")
+            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
             continue
 
-        elif data.startswith(b"IMG_END"):
-            for key, info in list(incoming_images.items()):
-                if info["received"] == info["total"]:
-                    save_path = os.path.join(image_dir, info["filename"])
-                    try:
-                        full_data = b''.join(info["chunks"][i] for i in range(info["total"]))
-                        with open(save_path, "wb") as f:
-                            f.write(full_data)
-                        write_to_cli(f"IMG {info['from']} {info['filename']}")
-                        del incoming_images[key]
-                    except Exception as e:
-                        print(f"{RED}Fehler beim Speichern des Bildes: {e}{RESET}")
-            continue
-
-        msg = data.decode("utf-8", errors="ignore").strip()
-        parts = msg.split(" ", 2)
-        if not parts:
-            continue
-
-        cmd = parts[0]
-
-        if cmd == "KNOWNUSERS":
-            entries = msg[len("KNOWNUSERS "):].split(", ")
-            for entry in entries:
-                p = entry.split()
-                if len(p) == 3:
-                    h, ip, port_str = p
-                    known_users[h] = (ip, int(port_str))
-            users_str = ", ".join(f"{h} {ip} {p}" for h, (ip, p) in known_users.items())
-            write_to_cli(f"KNOWNUSERS {users_str}")
-
-        elif cmd == "MSG" and len(parts) == 3:
-            sender = parts[1]
-            text = parts[2]
-            if sender != config["handle"]:
+        elif current_chat.lower() == "online":
+            if config.get("away", False):
+                config["away"] = False
                 if os.path.exists(AWAY_FLAG):
-                    with open(os.path.join("receive", "offline_messages.txt"), "a", encoding="utf-8") as f:
-                        f.write(f"{sender}: {text}\n")
-                    if sender not in autoreplied_to:
-                        send_msg(sender, config["autoreply"], known_users, config["handle"])
-                        autoreplied_to.add(sender)
+                    os.remove(AWAY_FLAG)
+                print(f"{GREEN}Du bist wieder online.{RESET}")
+                for h in known_users:
+                    if h != own_handle:
+                        send_pipe_command(f"SEND_MSG {h} Ich bin wieder da.")
+                if os.path.exists(offline_txt):
+                    print(f"{BOLD}{RED} Verpasste Nachrichten:{RESET}")
+                    [print(f" {l.strip()}") for l in open(offline_txt, encoding="utf-8")]
+                    os.remove(offline_txt)
                 else:
-                    write_to_cli(f"MSG {sender} {text}")
+                    print(f"{CYAN}Keine verpassten Nachrichten.{RESET}")
+            else:
+                print(f"{YELLOW}Du warst nicht offline.{RESET}")
+            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
+            continue
 
-        elif cmd == "JOIN" and len(parts) == 3:
-            join_handle = parts[1]
-            join_port = int(parts[2])
-            if join_handle != config["handle"]:
-                known_users[join_handle] = (addr[0], join_port)
-                write_to_cli(f"JOIN {join_handle}")
+        elif current_chat.lower() == "hilfe":
+            show_intro()
+            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
+            continue
 
-        elif cmd == "LEAVE" and len(parts) == 2:
-            leave_handle = parts[1]
-            if leave_handle in known_users:
-                del known_users[leave_handle]
-            write_to_cli(f"LEAVE {leave_handle}")
+        elif current_chat.startswith("/autoreply "):
+            new_reply = current_chat[len("/autoreply "):].strip()
+            update_config_value("autoreply", new_reply)
+            config["autoreply"] = new_reply
+            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
+            continue
 
+        elif current_chat.startswith("/name"):
+            new_chat = current_chat[len("/name"):].strip()
+            if new_chat in known_users:
+                print(f"{CYAN}↪ Wechsel zu {new_chat}{RESET}")
+                current_chat = new_chat
+            else:
+                print(f"{RED}⚠ Nutzer '{new_chat}' nicht bekannt.{RESET}")
+                current_chat = input(f"{MAG}➔ Chatpartner: {RESET}")
+            continue
 
-## @brief Signal-Handler für sauberes Beenden.
-## @details Sendet LEAVE und beendet sofort.
-## @param signum Signalnummer.
-## @param frame Aktueller Stackframe.
-def handle_sigterm(signum, frame):
-    config = get_config()
-    send_leave(config["handle"], config["whoisport"])
-    sys.exit(0)
+        elif current_chat.startswith("/"):
+            print(f"{YELLOW}⚠ Unbekannter Befehl: {current_chat}{RESET}")
+            current_chat = input(f"{MAG}➔ Chatpartner oder Befehl: {RESET}")
+            continue
 
+        elif current_chat not in known_users:
+            print(f"{RED}⚠ Nutzer '{current_chat}' nicht bekannt.{RESET}")
+            current_chat = input(f"{MAG}➔ Chatpartner: {RESET}")
+            continue
 
-## @brief Startet den Netzwerkprozess.
-## @details Ablauf:
-## 1) Liest Config.
-## 2) Bindet SIGTERM & SIGINT.
-## 3) Startet UDP-Listener-Thread.
-## 4) Startet CLI-Pipe-Reader.
-def start():
-    config = get_config()
-    signal.signal(signal.SIGTERM, handle_sigterm)
-    signal.signal(signal.SIGINT, handle_sigterm)
-    port = config["port"][0]
-    print(f"{YELLOW}[NETWORK] gestartet auf Port {port}{RESET}\n")
-    threading.Thread(target=listen_on_port, args=(port, config), daemon=True).start()
-    read_cli_pipe(config)
+        print(f"{CYAN}💬 Chat mit {current_chat} gestartet.{RESET}")
+        while True:
+            try:
+                with patch_stdout():
+                    msg = session.prompt("> ")
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{RED} Chat beendet.{RESET}")
+                return
 
+            if msg.lower() == "exit":
+                current_chat = "exit"
+                break
+            if msg.lower() in ["who", "online", "offline", "hilfe"] or msg.startswith("/"):
+                current_chat = msg
+                break
 
-## @brief Einstiegspunkt.
-## @details Erstellt Pipes falls nötig, ruft start() auf.
+            sys.stdout.write("\033[F\033[K")
+            sys.stdout.flush()
+
+            if msg.startswith("send "):
+                name = msg.split(" ", 1)[1].strip()
+                path = find_file(name)
+                if not path:
+                    print(f"{RED}❌ Bild nicht gefunden: {name}{RESET}")
+                    continue
+                with open(path, "rb") as f:
+                    data = f.read()
+                send_pipe_command(f"SEND_IMAGE {current_chat} {path} {len(data)}")
+                print(f"{'':>40}{GREEN}Du: [Bild gesendet: {os.path.basename(path)}]{RESET}")
+                continue
+
+            send_pipe_command(f"SEND_MSG {current_chat} {msg}")
+            print(f"{'':>40}{GREEN}Du: {msg}{RESET}")
+
 if __name__ == "__main__":
-    if not os.path.exists(PIPE_CLI_TO_NET):
-        os.mkfifo(PIPE_CLI_TO_NET)
-    if not os.path.exists(PIPE_NET_TO_CLI):
-        os.mkfifo(PIPE_NET_TO_CLI)
-    start()
+    if not os.path.exists(PIPE_CLI_TO_NET): os.mkfifo(PIPE_CLI_TO_NET)
+    if not os.path.exists(PIPE_NET_TO_CLI): os.mkfifo(PIPE_NET_TO_CLI)
+    print(f"{YELLOW}[CLI] gestartet mit Pipes.{RESET}")
+    threading.Thread(target=listen_pipe_loop, daemon=True).start()
+    run_cli()
