@@ -104,3 +104,83 @@ def send_msg(to_handle, text, known_users, my_handle):
     msg = f"MSG {my_handle} {text}"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(msg.encode("utf-8"), (ip, port))
+
+
+        ## @brief Sendet eine Bilddatei in mehreren Chunks an einen bekannten Empfänger.
+#
+#  Das Bild wird in Blöcke geteilt und über UDP verschickt.
+#  Zuerst wird eine IMG_START-Nachricht gesendet, dann die Chunks,
+#  zum Schluss ein IMG_END.
+#
+#  @param to_handle Empfänger-Handle.
+#  @param filepath Pfad zur Bilddatei.
+#  @param filesize Größe der Datei in Bytes.
+#  @param known_users Dictionary der bekannten Nutzer.
+#  @param config Aktuelle Konfiguration (Handle etc.).
+def send_image(to_handle, filepath, filesize, known_users, config):
+    if to_handle not in known_users:
+        print(f"{RED}Empfänger {to_handle} nicht bekannt{RESET}")
+        return
+    ip, port = known_users[to_handle]
+    chunk_size = 1024
+    total_chunks = (filesize + chunk_size - 1) // chunk_size
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock, open(filepath, "rb") as f:
+            # Starte Übertragung
+            start_msg = f"IMG_START {config['handle']} {os.path.basename(filepath)} {total_chunks}"
+            sock.sendto(start_msg.encode(), (ip, port))
+
+            # Sende die Chunks nacheinander
+            for i in range(total_chunks):
+                chunk_data = f.read(chunk_size)
+                chunk_msg = f"CHUNK {i}".encode() + b'||' + chunk_data
+                sock.sendto(chunk_msg, (ip, port))
+
+            # Beende Übertragung
+            sock.sendto(b"IMG_END", (ip, port))
+    except Exception as e:
+        print(f"{RED}Fehler beim Bildversand: {e}{RESET}")
+
+
+## @brief Liest Kommandos aus der CLI-to-Network Pipe & führt sie aus.
+#
+#  Unterstützt: SEND_MSG, SEND_IMAGE, WHO, JOIN, LEAVE.
+#  Arbeitet kontinuierlich im Hauptthread.
+#
+#  @param config Aktuelle Konfiguration.
+def read_cli_pipe(config):
+    while True:
+        with open(PIPE_CLI_TO_NET, "r") as pipe:
+            for line in pipe:
+                parts = line.strip().split(" ", 2)
+                if not parts:
+                    continue
+                cmd = parts[0]
+
+                # Nachricht senden
+                if cmd == "SEND_MSG" and len(parts) == 3:
+                    to, msg = parts[1], parts[2]
+                    send_msg(to, msg, known_users, config["handle"])
+
+                # Bild senden
+                elif cmd == "SEND_IMAGE" and len(parts) == 4:
+                    to, filepath, filesize_str = parts[1], parts[2], parts[3] if len(parts) > 3 else '0'
+                    try:
+                        filesize = int(filesize_str)
+                    except:
+                        filesize = 0
+                    send_image(to, filepath, filesize, known_users, config)
+
+                # WHO anfragen
+                elif cmd == "WHO":
+                    send_who(config["whoisport"])
+
+                # JOIN senden
+                elif cmd == "JOIN" and len(parts) == 3:
+                    _, handle, port = parts
+                    send_join(handle, int(port), config["whoisport"])
+
+                # LEAVE senden
+                elif cmd == "LEAVE" and len(parts) == 2:
+                    send_leave(parts[1], config["whoisport"])
