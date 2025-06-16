@@ -47,3 +47,60 @@ def write_to_cli(msg):
     except Exception as e:
         # Fehlerausgabe in Rot
         print(f"{RED}Fehler beim Schreiben in CLI-Pipe: {e}{RESET}")
+
+
+        ## @brief Sendet eine WHO-Anfrage via UDP-Broadcast.
+#  
+#  Diese Anfrage fragt nach anderen aktiven Clients im Netzwerk.
+#
+#  @param whoisport Der Port, auf dem WHO-Anfragen gesendet werden.
+def send_who(whoisport):
+    msg = "WHO"
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
+
+
+## @brief Sendet eine JOIN-Nachricht an alle im Netzwerk.
+#  
+#  Teilt den anderen Clients mit, dass dieser Client nun online ist.
+#
+#  @param handle Eigenes Handle (Benutzername).
+#  @param port Port, auf dem dieser Client erreichbar ist.
+#  @param whoisport Port für WHO/JOIN-Broadcasts.
+def send_join(handle, port, whoisport):
+    msg = f"JOIN {handle} {port}"
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
+
+
+## @brief Sendet eine LEAVE-Nachricht, um sich abzumelden.
+#
+#  Benachrichtigt andere Clients, dass dieser Client offline geht.
+#
+#  @param handle Eigenes Handle.
+#  @param whoisport Port für WHO/LEAVE-Broadcasts.
+def send_leave(handle, whoisport):
+    msg = f"LEAVE {handle}"
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(msg.encode("utf-8"), ('255.255.255.255', whoisport))
+
+
+## @brief Sendet eine normale Chat-Nachricht an einen bekannten Nutzer.
+#
+#  Verwendet UDP-Direct Message, basierend auf der bekannten IP/Port-Kombination.
+#
+#  @param to_handle Handle des Empfängers.
+#  @param text Nachrichtentext.
+#  @param known_users Dictionary der bekannten Nutzer.
+#  @param my_handle Eigenes Handle.
+def send_msg(to_handle, text, known_users, my_handle):
+    if to_handle not in known_users:
+        print(f"{RED}Empfänger {to_handle} nicht bekannt{RESET}")
+        return
+    ip, port = known_users[to_handle]
+    msg = f"MSG {my_handle} {text}"
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.sendto(msg.encode("utf-8"), (ip, port))
