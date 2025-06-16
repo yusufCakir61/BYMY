@@ -184,3 +184,155 @@ def read_cli_pipe(config):
                 # LEAVE senden
                 elif cmd == "LEAVE" and len(parts) == 2:
                     send_leave(parts[1], config["whoisport"])
+
+                    ## @brief Lauscht auf eingehende UDP-Pakete und verarbeitet alle Typen.
+#
+#  Unterstützt:
+#  - Empfang und Speichern von Bildern in Chunks
+#  - Steuerbefehle (KNOWNUSERS, MSG, JOIN, LEAVE)
+#
+#  @param port Lokaler UDP-Port zum Hören.
+#  @param config Laufzeit-Konfiguration.
+def listen_on_port(port, config):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("", port))  # Bind an alle Interfaces
+    image_dir = config.get("imagepath", "receive/")
+    os.makedirs(image_dir, exist_ok=True)
+    incoming_images = {}
+
+    while True:
+        try:
+            data, addr = sock.recvfrom(65535)
+        except OSError as e:
+            print(f"{RED}Socket Error: {e}{RESET}")
+            break
+
+        # === Bildübertragung: Startsignal erkennen ===
+        if data.startswith(b"IMG_START"):
+            try:
+                parts = data.decode().strip().split(" ", 3)
+                if len(parts) == 4:
+                    _, sender, filename, num_chunks_str = parts
+                    num_chunks = int(num_chunks_str)
+                    # Neues Bild-Objekt vorbereiten
+                    incoming_images[(addr, filename)] = {
+                        "from": sender,
+                        "filename": filename,
+                        "total": num_chunks,
+                        "received": 0,
+                        "chunks": {}
+                    }
+            except Exception as e:
+                print(f"{RED}Fehler bei IMG_START: {e}{RESET}")
+            continue
+
+        # === Bildübertragung: Chunk empfangen ===
+        elif data.startswith(b"CHUNK"):
+            try:
+                header, chunk_data = data.split(b'||', 1)
+                _, chunk_num_str = header.decode().split()
+                chunk_num = int(chunk_num_str)
+                for key in incoming_images:
+                    if key[0] == addr:
+                        incoming_images[key]["chunks"][chunk_num] = chunk_data
+                        incoming_images[key]["received"] += 1
+                        break
+            except Exception as e:
+                print(f"{RED}Fehler bei CHUNK: {e}{RESET}")
+            continue
+
+        # === Bildübertragung: Ende verarbeiten ===
+        elif data.startswith(b"IMG_END"):
+            for key, info in list(incoming_images.items()):
+                if info["received"] == info["total"]:
+                    save_path = os.path.join(image_dir, info["filename"])
+                    try:
+                        full_data = b''.join(info["chunks"][i] for i in range(info["total"]))
+                        with open(save_path, "wb") as f:
+                            f.write(full_data)
+                        write_to_cli(f"IMG {info['from']} {info['filename']}")
+                        del incoming_images[key]
+                    except Exception as e:
+                        print(f"{RED}Fehler beim Speichern des Bildes: {e}{RESET}")
+            continue
+
+        # === Alle sonstigen Befehle (KNOWNUSERS, MSG, JOIN, LEAVE) ===
+        msg = data.decode("utf-8", errors="ignore").strip()
+        parts = msg.split(" ", 2)
+        if not parts:
+            continue
+
+        cmd = parts[0]
+
+        ## KNOWNUSERS: Update lokale User-Liste
+        if cmd == "KNOWNUSERS":
+            entries = msg[len("KNOWNUSERS "):].split(", ")
+            for entry in entries:
+                p = entry.split()
+                if len(p) == 3:
+                    h, ip, port_str = p
+                    known_users[h] = (ip, int(port_str))
+            users_str = ", ".join(f"{h} {ip} {p}" for h, (ip, p) in known_users.items())
+            write_to_cli(f"KNOWNUSERS {users_str}")
+
+        ## MSG: Textnachricht empfangen & ggf. Auto-Reply senden
+        elif cmd == "MSG" and len(parts) == 3:
+            sender = parts[1]
+            text = parts[2]
+            if sender != config["handle"]:
+                if os.path.exists(AWAY_FLAG):
+                    with open(os.path.join("receive", "offline_messages.txt"), "a", encoding="utf-8") as f:
+                        f.write(f"{sender}: {text}\n")
+                    if sender not in autoreplied_to:
+                        send_msg(sender, config["autoreply"], known_users, config["handle"])
+                        autoreplied_to.add(sender)
+                else:
+                    write_to_cli(f"MSG {sender} {text}")
+
+        ## JOIN: Neuen Nutzer in known_users eintragen
+        elif cmd == "JOIN" and len(parts) == 3:
+            join_handle = parts[1]
+            join_port = int(parts[2])
+            if join_handle != config["handle"]:
+                known_users[join_handle] = (addr[0], join_port)
+                write_to_cli(f"JOIN {join_handle}")
+
+        ## LEAVE: Nutzer austragen
+        elif cmd == "LEAVE" and len(parts) == 2:
+            leave_handle = parts[1]
+            if leave_handle in known_users:
+                del known_users[leave_handle]
+            write_to_cli(f"LEAVE {leave_handle}")
+
+
+## @brief Behandelt SIGTERM oder SIGINT um sich sauber abzumelden.
+#  Sendet LEAVE und beendet das Programm.
+#
+#  @param signum Signalnummer.
+#  @param frame Aktueller Stackframe.
+def handle_sigterm(signum, frame):
+    config = get_config()
+    send_leave(config["handle"], config["whoisport"])
+    sys.exit(0)
+
+
+## @brief Startpunkt des Netzwerkprozesses.
+#
+#  Bindet Signale, startet Listener & Pipe-Reader.
+def start():
+    config = get_config()
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    signal.signal(signal.SIGINT, handle_sigterm)
+    port = config["port"][0]
+    print(f"{YELLOW}[NETWORK] gestartet auf Port {port}{RESET}\n")
+    threading.Thread(target=listen_on_port, args=(port, config), daemon=True).start()
+    read_cli_pipe(config)
+
+
+# === Hauptprogramm ===
+if __name__ == "__main__":
+    if not os.path.exists(PIPE_CLI_TO_NET):
+        os.mkfifo(PIPE_CLI_TO_NET)
+    if not os.path.exists(PIPE_NET_TO_CLI):
+        os.mkfifo(PIPE_NET_TO_CLI)
+    start()
