@@ -31,3 +31,19 @@ AWAY_FLAG       = "away.flag"             ## @var AWAY_FLAG Datei signalisiert A
 # Laufzeitvariablen
 autoreplied_to = set()  ## @var autoreplied_to Speichert Nutzer, die schon Auto-Reply bekamen
 known_users    = {}     ## @var known_users Speichert bekannte Nutzer als Dict {handle: (ip, port)}
+
+
+## @brief Schreibt eine Nachricht in die Pipe von Network zu CLI.
+#  
+#  Öffnet die Pipe @ref PIPE_NET_TO_CLI im Schreibmodus und überträgt die Nachricht.
+#  So kann der CLI-Prozess diese lesen und anzeigen.
+#
+#  @param msg Die Nachricht, die geschrieben werden soll (String).
+def write_to_cli(msg):
+    try:
+        with open(PIPE_NET_TO_CLI, "w") as pipe:
+            # Nachricht plus Zeilenumbruch senden
+            pipe.write(msg + "\n")
+    except Exception as e:
+        # Fehlerausgabe in Rot
+        print(f"{RED}Fehler beim Schreiben in CLI-Pipe: {e}{RESET}")
