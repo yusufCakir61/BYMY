@@ -1,33 +1,31 @@
+#!/usr/bin/env python3
+
 import socket
 from config_handler import get_config
+
+## @file discovery_process.py
+#  @brief Discovery-Modul für BYMY Chat (UDP-Broadcast-Discovery nach SLCP-Art)
+#  @details
+#  Ablauf & Zweck:
+#  1) Öffnet einen UDP-Socket am WHOIS-Port für Discovery.
+#  2) Wartet endlos auf JOIN, LEAVE oder WHO Nachrichten.
+#  3) JOIN: Speichert neuen Nutzer, broadcastet an bekannte.
+#  4) LEAVE: Entfernt Nutzer, broadcastet Austritt an bekannte.
+#  5) WHO: Antwortet mit allen bekannten Nutzern, wenn Absender bekannt ist.
+#  
+#  Damit stellt das Modul sicher, dass jeder Client dynamisch andere Clients im LAN finden kann,
+#  ohne zentralen Server.
 
 RESET = "\033[0m"
 YELLOW = "\033[93m"
 
 ##
-# @file discovery_process.py
-# @brief Discovery-Modul für den BYMY-CHAT
-#
-# @details
-# Dieses Modul steuert das Finden und Verwalten der aktiven Nutzer:
-# 1. Richtet einen UDP-Broadcast-Socket ein.
-# 2. Empfängt JOIN-Nachrichten: speichert neue Nutzer und broadcastet sie weiter.
-# 3. Empfängt LEAVE-Nachrichten: entfernt Nutzer und broadcastet sie weiter.
-# 4. Beantwortet WHO-Anfragen mit der aktuellen Teilnehmerliste.
-#
-
-##
-# @brief Führt den Discovery-Prozess aus.
-# @param whoisport Port für Discovery-Nachrichten (JOIN, LEAVE, WHO)
-# @details
-# Hauptschleife:
-# - Initialisiert den UDP-Socket für Broadcast.
-# - Wartet unendlich auf neue Discovery-Nachrichten.
-# - Verarbeitet jede Nachricht direkt nach Erhalt.
-#
+# @brief Discovery-Hauptprozess: Verwaltet Teilnehmerliste und antwortet auf Anfragen.
+# @param whoisport UDP-Port für WHO/JOIN/LEAVE-Kommunikation.
 def run_discovery_process(whoisport):
-    known_users = {}  ## Speichert bekannte Teilnehmer {handle: (ip, port)}
+    known_users = {}  # {handle: (ip, port)}
 
+    # 1) UDP-Socket vorbereiten & binden
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -35,16 +33,14 @@ def run_discovery_process(whoisport):
 
     print(f"{YELLOW}[DISCOVERY] gestartet auf Port {whoisport}{RESET}\n")
 
+    # 2) Endlosschleife für eingehende Nachrichten
     while True:
         data, addr = sock.recvfrom(1024)
         msg = data.decode("utf-8").strip()
 
-        ##
-        # @brief Behandelt JOIN-Nachricht.
-        # @details
-        # Erkennt 'JOIN <handle> <port>', trägt neuen Nutzer ein
-        # und informiert alle anderen bekannten Nutzer über den Neuzugang.
-        #
+        ## 3) JOIN verarbeiten:
+        # - JOIN <handle> <port>
+        # - speichere Absender & broadcaste an andere bekannte Nutzer.
         if msg.startswith("JOIN"):
             parts = msg.split()
             if len(parts) == 3:
@@ -56,16 +52,14 @@ def run_discovery_process(whoisport):
                 for h, (ip_other, port_other) in known_users.items():
                     if h != handle:
                         try:
-                            sock.sendto(f"JOIN {handle} {port}".encode("utf-8"), (ip_other, port_other))
-                        except:
-                            pass
+                            join_msg = f"JOIN {handle} {port}"
+                            sock.sendto(join_msg.encode("utf-8"), (ip_other, port_other))
+                        except Exception:
+                            pass  # Ignoriere Fehler beim Weiterleiten
 
-        ##
-        # @brief Behandelt LEAVE-Nachricht.
-        # @details
-        # Erkennt 'LEAVE <handle>', entfernt Nutzer aus der Liste
-        # und informiert alle anderen über das Verlassen.
-        #
+        ## 4) LEAVE verarbeiten:
+        # - LEAVE <handle>
+        # - entferne aus Liste & broadcaste LEAVE an andere bekannte.
         elif msg.startswith("LEAVE"):
             parts = msg.split()
             if len(parts) == 2:
@@ -75,15 +69,12 @@ def run_discovery_process(whoisport):
                 for h, (ip_other, port_other) in known_users.items():
                     try:
                         sock.sendto(msg.encode("utf-8"), (ip_other, port_other))
-                    except:
+                    except Exception:
                         pass
 
-        ##
-        # @brief Behandelt WHO-Anfrage.
-        # @details
-        # Erkennt 'WHO', prüft IP in known_users und sendet eine Liste
-        # aller bekannten Nutzer zurück mit 'KNOWNUSERS'.
-        #
+        ## 5) WHO beantworten:
+        # - Nur wenn Absender-IP schon in known_users.
+        # - Sende KNOWNUSERS <handle1 ip1 port1>, ...
         elif msg == "WHO":
             sender_ip = addr[0]
             sender_port = None
@@ -97,11 +88,8 @@ def run_discovery_process(whoisport):
                 response = f"KNOWNUSERS {user_list}"
                 sock.sendto(response.encode("utf-8"), (sender_ip, sender_port))
 
-##
-# @brief Startet den Discovery-Prozess im Standalone-Betrieb.
-# @details
-# Liest Konfigurationsdatei und ruft die Hauptschleife auf.
-#
+
+## @brief Standalone-Startpunkt: Liest Konfig & ruft Hauptprozess auf.
 if __name__ == "__main__":
     config = get_config()
     run_discovery_process(config["whoisport"])
