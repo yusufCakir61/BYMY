@@ -51,14 +51,12 @@ def update_config_value(key, value):
 def show_intro():
     print(f"{BOLD}{CYAN}Willkommen beim BYMY-CHAT{RESET}\n")
     print(f"""Verfügbare Befehle:{RESET}
-  {YELLOW}who{RESET}                – Aktive Nutzer anzeigen
-  {YELLOW}online{RESET}             – Du bist wieder da
-  {YELLOW}offline{RESET}            – Abwesenheitsmodus aktivieren + Autoreply
-  {YELLOW}send <bild>{RESET}        – Bild senden (Dateiname reicht)
-  {YELLOW}/autoreply <text>{RESET}  – Autoreply-Nachricht ändern
-  {YELLOW}/name <nutzer>{RESET}     – Chatpartner wechseln
-  {YELLOW}hilfe{RESET}              – Diese Hilfe erneut anzeigen
-  {YELLOW}exit{RESET}               – Beenden\n""")
+  {CYAN}offline{RESET}            – Abwesenheitsmodus aktivieren + Autoreply
+  {CYAN}send <bild>{RESET}        – Bild senden (Dateiname reicht)
+  {CYAN}/autoreply <text>{RESET}  – Autoreply-Nachricht ändern
+  {CYAN}/name <nutzer>{RESET}     – Chatpartner wechseln
+  {CYAN}hilfe{RESET}              – Diese Hilfe erneut anzeigen
+  {CYAN}exit{RESET}               – Beenden\n""")
 
 ## 4) Erstellt Pipe neu, falls sie defekt ist.
 # @param pipe_name Dateiname der Pipe
